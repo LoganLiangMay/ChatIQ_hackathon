@@ -1,0 +1,15 @@
+{
+  "ignore_dirs": [
+    "memory-bank",
+    "documentation",
+    ".cursor",
+    "node_modules/.cache"
+  ],
+  "ignore_patterns": [
+    "**/*.md",
+    "**/*.txt",
+    "**/*.sh",
+    "**/*.plan.md"
+  ]
+}
+

@@ -1,0 +1,97 @@
+rules_version = '2';
+
+// Firebase Storage Security Rules for MessageAI
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if file is an image
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+    
+    // Helper function to check file size (max 5MB)
+    function isValidSize() {
+      return request.resource.size < 5 * 1024 * 1024;
+    }
+    
+    // Helper function to check if user is a participant in the chat
+    function isParticipant(chatId) {
+      return isAuthenticated() && 
+             request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants;
+    }
+    
+    // Chat images
+    match /chats/{chatId}/images/{imageId} {
+      // Allow read if user is a participant in the chat
+      allow read: if isAuthenticated() && isParticipant(chatId);
+      
+      // Allow create if:
+      // - User is authenticated
+      // - User is a participant in the chat
+      // - File is an image
+      // - File size is within limits
+      allow create: if isAuthenticated() &&
+                       isParticipant(chatId) &&
+                       isImage() &&
+                       isValidSize();
+      
+      // Allow delete if:
+      // - User is authenticated
+      // - User is a participant in the chat
+      allow delete: if isAuthenticated() && isParticipant(chatId);
+      
+      // No updates allowed (images are immutable)
+      allow update: if false;
+    }
+    
+    // User profile pictures
+    match /users/{userId}/profile/{imageId} {
+      // Anyone authenticated can read profile pictures
+      allow read: if isAuthenticated();
+      
+      // Only the user can upload their own profile picture
+      allow create: if isAuthenticated() &&
+                       request.auth.uid == userId &&
+                       isImage() &&
+                       isValidSize();
+      
+      // Only the user can delete their own profile picture
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+      
+      // No updates allowed
+      allow update: if false;
+    }
+    
+    // Group pictures
+    match /groups/{chatId}/picture/{imageId} {
+      // Anyone authenticated can read group pictures
+      allow read: if isAuthenticated();
+      
+      // Only chat admins can upload group pictures
+      allow create: if isAuthenticated() &&
+                       request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.admins &&
+                       isImage() &&
+                       isValidSize();
+      
+      // Only chat admins can delete group pictures
+      allow delete: if isAuthenticated() &&
+                       request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.admins;
+      
+      // No updates allowed
+      allow update: if false;
+    }
+    
+    // Deny all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+
+
+

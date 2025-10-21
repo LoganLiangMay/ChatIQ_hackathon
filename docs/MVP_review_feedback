@@ -1,0 +1,134 @@
+# MessageAI - Product Requirements Document (PRD) Review & Feedback
+
+## Version 1.1 - Post-Review Update
+
+Below is my detailed review of the PRD you generated (Version 1.0). I'll start with an overall assessment, then break it down by section, incorporating your answers to the open questions in Section 13. I'll highlight strengths, gaps, suggestions for improvements, and how it aligns with the original MessageAI project rubric (focusing on MVP). After that, I'll provide tailored feedback in the form of a refined prompt you can input into the Cursor AI agent to iterate on this (e.g., to generate code, edit the PRD, or walk through user stories). Finally, I'll note important points for you as the developer.
+
+This review assumes good intent and focuses on making the PRD more actionable for your 24-hour MVP sprint. It's comprehensive but prioritized for MVP—reliable messaging infrastructure over everything else.
+
+---
+
+## Overall Assessment
+
+### Strengths
+- **Alignment with Rubric**: The PRD closely mirrors the MessageAI project doc. It emphasizes MVP as a "hard gate" focused on core messaging (real-time delivery, persistence, offline support, optimistic UI, group chats, etc.), while deferring AI features. It includes all 10 mandatory MVP features from the rubric (one-on-one chat, real-time delivery, persistence, etc.) and adds testing scenarios that match the rubric's "Testing Scenarios" section.
+- **Structure and Clarity**: Well-organized with sections like User Stories, MVP Features, Tech Stack, Pitfalls, and Out of Scope. The vertical build strategy (e.g., auth first, then one-on-one, then group) is practical for a 24-hour timeline.
+- **Tech Stack Insights**: Excellent coverage of pros/pitfalls for React Native/Expo, SQLite, and Firebase. The recommended schemas (SQL and Firestore) are solid starting points and address offline sync well.
+- **Risk Mitigation**: The risks section is proactive, especially around offline sync and notifications—key pain points in messaging apps.
+- **MVP Focus**: Ruthlessly scopes out non-essentials (e.g., AI, advanced media, polish), which is critical for hitting the Tuesday deadline.
+- **Persona Integration**: Keeps MVP persona-agnostic but sets up the Remote Team Professional persona for post-MVP AI, with the hybrid approach noted.
+
+### Gaps & Areas for Improvement
+- **Completeness vs. Rubric**: 
+  - The rubric requires "basic media support—at minimum, users should be able to send and receive images." Your PRD notes this in the original doc but excludes it from MVP (Section 6.2). Based on your answer to Question 3, we need to add it as a minimal feature (e.g., camera roll only, no videos/files).
+  - "Show when users are typing" is in User Stories (US-11) and Additional MVP Features, but ensure it's implemented minimally (e.g., via Firestore presence updates).
+  - Push notifications: Rubric specifies "at least in foreground"—your PRD matches this, but add a note on Expo Notifications' limitations for killed app state.
+- **User Stories**: Comprehensive, but some could be more granular (e.g., US-18 for group creation lacks details on how users are added). With your answer to Question 4, we need to expand group chat scope to include admin controls, member management, and group editing— but this risks MVP bloat; recommend keeping it minimal to avoid scope creep.
+- **Tech Pitfalls**: Great depth, but add a note on Expo's battery/network usage (can be high for real-time apps) and Firebase's 1MB document limit (relevant for group participant arrays if groups grow).
+- **Timeline Realism**: 24 hours is aggressive. The build order is good, but estimate time per slice more explicitly (e.g., auth: 2-3 hours).
+- **Metrics & Validation**: Section 7 is strong, but add quantitative thresholds (e.g., "zero message loss in 100-message offline test").
+- **AI Tease**: Good to defer, but briefly note how MVP data model supports RAG (e.g., timestamped messages for history retrieval).
+- **General**: Add a glossary for terms like "optimistic UI" if the reviewer isn't technical. Current date (October 20, 2025) should be inserted in Section 15's Document Control.
+
+### Alignment Score
+- **MVP Coverage**: 95% (missing explicit basic image support; group scope expansion may add risk).
+- **Post-MVP Readiness**: 100% (clear roadmap, hybrid AI approach).
+- **Actionability**: High—ready to code from, but incorporate your answers below for v1.1.
+
+---
+
+## Incorporation of Your Answers to Open Questions (Section 13)
+
+Updating the PRD based on your responses. These are integrated inline where relevant, and I'll flag changes.
+
+1. **Physical Device Availability**: Yes, you have an iPhone and iPad for Expo Go.
+   - **Update to PRD**: In Section 5.4 (Push Notifications Pitfalls), remove "if no physical device" caveats. Add: "Test on physical iOS devices (iPhone/iPad via Expo Go) for accurate notification and lifecycle behavior. Use simulators for initial dev, but validate on hardware."
+   - **Impact**: Enables full foreground/background notification testing without workarounds.
+
+2. **Firebase Project**: Create a new one; you have an account. Free tier for now, can pay later.
+   - **Update to PRD**: In Section 12 (Dependencies), add: "Create a new Firebase project via existing account. Use free tier for MVP development and testing; upgrade to paid if usage exceeds limits post-MVP."
+   - **Impact**: No changes needed; just proceed with setup in build order.
+
+3. **Image Support in MVP**: Include basic image sending.
+   - **Update to PRD**: Add to Section 3.2 (Additional MVP Features): "Basic Media Support: Send/receive images from camera roll (display in chat; store URLs in Firestore)."
+   - Add User Story: "US-31: As a user, I can send and receive images in one-on-one and group chats."
+   - Move from Section 6.2 (Out of Scope) to post-MVP: "Advanced media (videos, voice, files)."
+   - **Impact**: Minimal addition—use Expo Image Picker for camera roll. Add to build order (Hours 13-18). Update Firestore schema to include messageType: 'text' | 'image' and content as URL for images.
+
+4. **Group Chat Scope**: Do the recommendations (group creation, messaging, participant list) AND add admin controls, member management, group editing.
+   - **Update to PRD**: In Section 3.1 #8 (Basic Group Chat), expand: "Include admin controls (creator as admin), member management (add/remove by admin), and group editing (name/picture by admin)."
+   - Update US-18: "As a user (admin), I can create a group chat with 3+ participants and manage members (add/remove)."
+   - Add US-32: "As a user (admin), I can edit group name and picture."
+   - **Impact & Warning**: This adds complexity (e.g., Firestore rules for admin checks, UI for member management). It risks the 24-hour timeline—consider making it "nice-to-have" if time is tight. Update risks in Section 10: "Risk: Expanded group features may introduce bugs in permissions; mitigate by testing admin flows early."
+
+5. **Deployment Target**: Expo Go as primary; test iOS simulator on Xcode later (post-MVP).
+   - **Update to PRD**: In Section 4.1 (Frontend), emphasize: "Primary testing via Expo Go on physical devices (iPhone/iPad). Use iOS simulator (Xcode) for initial layout checks; defer full simulator testing to post-MVP."
+   - In Section 7.3 (Delivery Validation): "Demo via Expo Go link; provide setup instructions for local emulators if needed."
+   - **Impact**: Simplifies MVP—Expo Go is fast for cross-platform testing.
+
+These updates make the PRD v1.1. No major rewrites needed; just these targeted additions.
+
+---
+
+## Section-by-Section Feedback
+
+- **1. Executive Summary**: Concise and motivational. Add: "Incorporating basic image support per rubric."
+- **2. User Stories**: 30+ stories are thorough but could be prioritized (e.g., bold MVP-must-haves). Walk-through suggestion: Group them into epics (Auth, 1:1, Offline, Group, Notifications). Add US-31 and US-32 as above.
+- **3. MVP Feature Requirements**: Spot-on with rubric's 10 hards. Expand 3.2 with basic images. Testing scenarios match rubric perfectly.
+- **4. Tech Stack**: Excellent pitfalls/ideas—helped decision-making. Add to 4.3: "Prepare Firestore for AI by including full message history in RAG-friendly format (e.g., serialized threads)."
+- **5. Technical Architecture**: Code snippets (SQL schema, JS queue) are gold. Add pitfall: "Expo Notifications may require user permissions; handle denial gracefully."
+- **6. Out of Scope**: Good boundaries. Remove basic images; keep advanced media here.
+- **7. MVP Success Metrics**: Checklist-style is useful. Add: "Basic image send/receive works in offline scenarios."
+- **8. Post-MVP Roadmap**: Clear phases. Note chosen advanced AI (you didn't specify—pick one, e.g., Proactive Assistant for Remote Team).
+- **9. Development Strategy**: Vertical slicing is key. Refine hours with your answers (e.g., add image picker to Hours 13-18).
+- **10. Key Risks**: Proactive. Add new risk from group expansion.
+- **11. Technical Decisions**: Solid patterns. Add: "Use Expo Image for image rendering to handle caching/offline."
+- **12. Dependencies**: Update with your Firebase answer. Add "expo-image-picker" to libraries for images.
+- **13. Open Questions**: Resolved above—remove or mark as "Resolved" in v1.1.
+- **14. Success Criteria Checklist**: Add checkboxes for new features (images, group management).
+- **15. Notes for Reviewer**: Strong close. Insert date: Created/Updated October 20, 2025.
+
+---
+
+## Prompt for Cursor AI Agent (Feedback/Iteration)
+
+Here's a refined prompt you can copy-paste into Cursor. It incorporates your PRD review, answers, and the walk-through request. It's styled like your original prompt for consistency.
+
+```
+The following document is my updated Product Requirements Document (PRD) for the MessageAI project (based on Gauntlet AI's rubric). I've reviewed Version 1.0 and incorporated answers to the open questions. Focus on MVP: a WhatsApp-like messaging app with real-time, offline support, persistence, optimistic UI, user auth, basic group chats (now expanded per my answers), read receipts, timestamps, online/offline indicators, typing indicators, push notifications (foreground min), and basic image sending/receiving.
+
+Updated based on my answers:
+1. Physical Device: Yes, iPhone and iPad for Expo Go testing.
+2. Firebase: Create new project on existing account; free tier for now.
+3. Image Support: Include basic image sending in MVP (camera roll only).
+4. Group Chat Scope: Include group creation, messaging, participant list, PLUS admin controls, member management, group editing.
+5. Deployment: Expo Go primary; iOS simulator post-MVP.
+
+The tech stack remains: React Native with Expo Router, Expo SQLite, Expo Notifications; deploy via Expo Go; Firebase backend (Firestore, Auth, Functions, FCM).
+
+Now, let's walk through each of the user stories in the PRD. For each one (US-1 to US-30, plus new US-31 and US-32 for images and group extras), provide:
+- A brief explanation of how to implement it in code (e.g., key components, libraries, Firebase/SQLite integration).
+- Potential pitfalls specific to that story.
+- Estimated effort (low/medium/high) for 24-hour MVP.
+- Any questions you have for clarification.
+
+After the walk-through, suggest code structure/boilerplate for the MVP (e.g., folder structure, key files like App.js, database service, message queue). If I have questions about the PRD afterward, I'll ask to clarify.
+
+Finally, generate starter code for the first slice: Setup & Authentication (Hours 1-4), including Expo init, Firebase config, auth screens with Expo Router.
+```
+
+This prompt keeps it focused, prompts a user story walk-through (as you requested), and leads into code generation for Cursor's strengths.
+
+---
+
+## Important Notes for You (As the Developer)
+
+- **Timeline Risk**: Adding group admin/member management could add 2-4 hours—monitor closely. If it jeopardizes core reliability, deprioritize to post-MVP despite your answer.
+- **Rubric Compliance**: With basic images added, you're now 100% on MVP hards. Don't forget "profile pictures and display names" (already in US-3)—use Firebase Storage for image uploads.
+- **Testing Emphasis**: Use your physical devices early for notifications/offline. Simulate poor networks with Chrome DevTools or Android emulator throttling.
+- **Cost/Billing**: Firebase free tier (1GB storage, 10GB transfer) should suffice, but monitor writes during testing to avoid surprises.
+- **Next Steps**: After Cursor's walk-through, prioritize coding the message queue—it's the heart of offline reliability.
+- **AI Prep**: Even in MVP, design messages with extensibility (e.g., add a 'metadata' field for future AI tags like priority).
+- **Resources**: Check Expo docs for Notifications (expo.dev/notifications) and Firebase React Native SDK. If stuck, search for "expo firebase messaging tutorial" (but no need for tools here as this is review-based).
+
+If you want me to expand on any section, generate code snippets, or revise the PRD further, just ask!
