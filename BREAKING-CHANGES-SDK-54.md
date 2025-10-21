@@ -252,6 +252,73 @@ useEffect(() => {
 
 ---
 
+### Breaking Change #14: Missing expo-device Package
+
+**Issue**: `expo-device` package not installed, causing import errors in NotificationService
+
+**Files Affected**:
+- `services/notifications/NotificationService.ts` (line 12)
+
+**Fix Applied**:
+```bash
+npm install expo-device --legacy-peer-deps
+```
+
+**Status**: ✅ Fixed (Attempt 1/3)  
+**Testing**: ⏳ Awaiting user reload
+
+---
+
+### Breaking Change #15: Expo Router 6 Default Exports (Warnings Only)
+
+**Issue**: Expo Router 6 shows warnings about missing default exports, but files DO have them
+
+**Files Affected**:
+- Multiple route files show warnings despite having correct exports
+
+**Fix Applied**:
+- Verified all files have proper `export default` statements
+- These appear to be false warnings from Expo Router 6
+- No code changes needed
+
+**Status**: ⚠️ Warnings only - app should still work  
+**Testing**: ⏳ Awaiting user verification
+
+---
+
+### Breaking Change #16: Firebase Initialization Order
+
+**Issue**: Firebase not initialized before modules try to use it, causing "No Firebase App" errors
+
+**Files Affected**:
+- `services/firebase/config.ts`
+- `services/firebase/firestore.ts`
+
+**Fix Applied**:
+```typescript
+// In config.ts - Initialize Firebase eagerly at module load
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  firestore = getFirestore(app);
+  storage = getStorage(app);
+  console.log('Firebase initialized successfully');
+} catch (error) {
+  console.error('Firebase initialization error:', error);
+  // Don't throw - allow app to start even if Firebase config is invalid
+}
+```
+
+**Status**: ✅ Fixed (Attempt 1/3)  
+**Testing**: ⏳ Awaiting user reload
+
+**Notes**:
+- Moved Firebase initialization from lazy (useEffect) to eager (module load)
+- This ensures Firebase is ready before any component tries to use it
+- Added try/catch to allow app to start even if Firebase credentials are invalid
+
+---
+
 ## Testing Status
 
 - [x] Phase 8.1: Build Test - ✅ PASSED

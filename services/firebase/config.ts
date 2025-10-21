@@ -18,6 +18,18 @@ let auth: Auth;
 let firestore: Firestore;
 let storage: FirebaseStorage;
 
+// Initialize Firebase eagerly to avoid module load order issues
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  firestore = getFirestore(app);
+  storage = getStorage(app);
+  console.log('Firebase initialized successfully');
+} catch (error) {
+  console.error('Firebase initialization error:', error);
+  // Don't throw - allow app to start even if Firebase config is invalid
+}
+
 export const initializeFirebase = () => {
   if (!app) {
     try {

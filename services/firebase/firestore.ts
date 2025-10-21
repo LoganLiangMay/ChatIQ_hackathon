@@ -2,10 +2,11 @@
  * Firestore operations for chats and messages
  */
 
-import { getFirestore, doc, setDoc, updateDoc, serverTimestamp, arrayUnion, collection } from 'firebase/firestore';
-import { app } from './config';
+import { doc, setDoc, updateDoc, serverTimestamp, arrayUnion, collection } from 'firebase/firestore';
+import { getFirebaseFirestore } from './config';
 
-const firestore = getFirestore(app);
+// Export firestore getter for lazy initialization
+export const firestore = getFirebaseFirestore();
 
 /**
  * Create or update a chat document
