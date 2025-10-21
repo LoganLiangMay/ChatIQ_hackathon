@@ -57,7 +57,18 @@ export const getFirebaseAuth = (): Auth => {
 
 export const getFirebaseFirestore = (): Firestore => {
   if (!firestore) {
-    throw new Error('Firebase not initialized. Call initializeFirebase() first.');
+    // Try to initialize if not already done
+    console.warn('Firestore not initialized, attempting initialization...');
+    try {
+      if (!app) {
+        app = initializeApp(firebaseConfig);
+      }
+      firestore = getFirestore(app);
+      console.log('Firestore initialized on demand');
+    } catch (error) {
+      console.error('Failed to initialize Firestore:', error);
+      throw new Error('Firebase not initialized. Check your Firebase configuration in .env file.');
+    }
   }
   return firestore;
 };
