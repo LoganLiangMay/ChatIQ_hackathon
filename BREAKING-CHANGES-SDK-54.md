@@ -440,6 +440,48 @@ const chatRef = doc(getFirestore(), 'chats', chatId);
 
 ---
 
+### Breaking Change #21: Missing Root Index Route
+
+**Issue**: Expo Router requires a root `index.tsx` file to define the initial route. Without it, the app shows "unmatched Route Page could not be found"
+
+**Files Affected**:
+- `app/index.tsx` (missing file)
+
+**Fix Applied**:
+```typescript
+// Created app/index.tsx
+import { useEffect } from 'react';
+import { useRouter } from 'expo-router';
+import { useAuth } from '@/contexts/AuthContext';
+
+export default function Index() {
+  const router = useRouter();
+  const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (loading) return;
+    
+    if (user) {
+      router.replace('/(tabs)/chats');
+    } else {
+      router.replace('/(auth)/sign-in');
+    }
+  }, [user, loading]);
+
+  return <LoadingSpinner />;
+}
+```
+
+**Status**: ✅ Fixed  
+**Testing**: ⏳ Awaiting user reload
+
+**Notes**:
+- Expo Router 6 requires an explicit index route at the app root
+- The index route shows a loading spinner while auth state is determined
+- Automatically redirects to sign-in (unauthenticated) or chats (authenticated)
+
+---
+
 ## Testing Status
 
 - [x] Phase 8.1: Build Test - ✅ PASSED
