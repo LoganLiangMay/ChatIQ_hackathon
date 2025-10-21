@@ -10,7 +10,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { AppState } from 'react-native';
-import { firestore } from '@/services/firebase/firestore';
+import { getFirebaseFirestore } from '@/services/firebase/config';
 import { db } from '@/services/database/sqlite';
 import { messageService } from '@/services/messages/MessageService';
 import { notificationService } from '@/services/notifications/NotificationService';
@@ -52,7 +52,7 @@ export function useMessages(chatId: string, currentUserId: string): UseMessagesR
   useEffect(() => {
     if (!chatId || !currentUserId) return;
     
-    const messagesRef = collection(firestore, `chats/${chatId}/messages`);
+    const messagesRef = collection(getFirebaseFirestore(), `chats/${chatId}/messages`);
     const q = query(
       messagesRef,
       orderBy('timestamp', 'desc'),

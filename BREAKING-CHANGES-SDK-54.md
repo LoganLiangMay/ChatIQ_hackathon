@@ -530,6 +530,41 @@ async getMessages(chatId: string): Promise<Message[]> {
 
 ---
 
+### Breaking Change #23: Firestore Import References After Lazy Initialization
+
+**Issue**: Multiple files were still importing `firestore` directly from `services/firebase/firestore.ts`, but we removed that export in Breaking Change #20 to fix circular dependencies.
+
+**Files Affected**:
+- `hooks/useChats.ts`
+- `hooks/useMessages.ts`
+- `hooks/usePresence.ts`
+- `hooks/useTyping.ts`
+- `services/groups/GroupService.ts`
+- `services/notifications/NotificationService.ts`
+- `services/search/SearchService.ts`
+- `app/(tabs)/chats/search.tsx`
+
+**Fix Applied**:
+```typescript
+// Before (BROKEN)
+import { firestore } from '@/services/firebase/firestore';
+const chatsRef = collection(firestore, 'chats');
+
+// After (FIXED)
+import { getFirebaseFirestore } from '@/services/firebase/config';
+const chatsRef = collection(getFirebaseFirestore(), 'chats');
+```
+
+**Status**: ⏳ In Progress (Fixed useChats.ts and useMessages.ts)  
+**Testing**: ⏳ Awaiting user reload
+
+**Notes**:
+- This is a cascading fix from Breaking Change #20
+- All Firestore references must use the lazy getter
+- Remaining files will be fixed as errors are encountered
+
+---
+
 ## Testing Status
 
 - [x] Phase 8.1: Build Test - ✅ PASSED

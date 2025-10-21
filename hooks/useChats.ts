@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { collection, query, where, orderBy, onSnapshot, getDoc, doc as firestoreDoc } from 'firebase/firestore';
-import { firestore } from '@/services/firebase/firestore';
+import { getFirebaseFirestore } from '@/services/firebase/config';
 import { db } from '@/services/database/sqlite';
 import { Chat, ChatListItem } from '@/types/chat';
 
@@ -43,7 +43,7 @@ export function useChats(userId: string): UseChatsReturn {
             if (otherUserId) {
               try {
                 // Try to get from Firestore
-                const userDoc = await getDoc(firestoreDoc(firestore, 'users', otherUserId));
+                const userDoc = await getDoc(firestoreDoc(getFirebaseFirestore(), 'users', otherUserId));
                 if (userDoc.exists()) {
                   const userData = userDoc.data();
                   chatListItem.otherUser = {
@@ -80,7 +80,7 @@ export function useChats(userId: string): UseChatsReturn {
   useEffect(() => {
     if (!userId) return;
     
-    const chatsRef = collection(firestore, 'chats');
+    const chatsRef = collection(getFirebaseFirestore(), 'chats');
     const q = query(
       chatsRef,
       where('participants', 'array-contains', userId),
