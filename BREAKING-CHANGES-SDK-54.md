@@ -319,6 +319,33 @@ try {
 
 ---
 
+### Breaking Change #17: Cannot Re-export Firebase SDK Functions
+
+**Issue**: React Native/Metro bundler cannot re-export Firebase SDK functions (non-configurable properties)
+
+**Files Affected**:
+- `services/firebase/firestore.ts` (line 74)
+
+**Fix Applied**:
+```typescript
+// Before (line 74)
+export { firestore, doc, setDoc, updateDoc, serverTimestamp, arrayUnion, collection };
+
+// After - Removed the re-export line
+// Files that need Firebase functions should import directly from 'firebase/firestore'
+```
+
+**Status**: ✅ Fixed (Attempt 1/3)  
+**Testing**: ⏳ Awaiting user reload
+
+**Notes**:
+- Firebase SDK functions are read-only/non-configurable
+- Cannot be re-exported in React Native environment
+- All files should import directly: `import { doc, setDoc } from 'firebase/firestore'`
+- Only our custom `firestore` instance is exported from this file
+
+---
+
 ## Testing Status
 
 - [x] Phase 8.1: Build Test - ✅ PASSED
