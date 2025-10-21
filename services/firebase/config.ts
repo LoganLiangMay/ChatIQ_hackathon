@@ -19,18 +19,12 @@ let auth: Auth;
 let firestore: Firestore;
 let storage: FirebaseStorage;
 
-// Initialize Firebase eagerly to avoid module load order issues
+// Initialize Firebase app eagerly, but services lazily to avoid double-init
 try {
   app = initializeApp(firebaseConfig);
-  // Use initializeAuth with AsyncStorage for React Native
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage)
-  });
-  firestore = getFirestore(app);
-  storage = getStorage(app);
-  console.log('Firebase initialized successfully');
+  console.log('Firebase app initialized');
 } catch (error) {
-  console.error('Firebase initialization error:', error);
+  console.error('Firebase app initialization error:', error);
   // Don't throw - allow app to start even if Firebase config is invalid
 }
 
@@ -38,18 +32,34 @@ export const initializeFirebase = () => {
   if (!app) {
     try {
       app = initializeApp(firebaseConfig);
-      // Use initializeAuth with AsyncStorage for React Native
+      console.log('Firebase app initialized');
+    } catch (error) {
+      console.error('Firebase app initialization error:', error);
+      throw error;
+    }
+  }
+  
+  // Initialize services lazily
+  if (!auth) {
+    try {
       auth = initializeAuth(app, {
         persistence: getReactNativePersistence(AsyncStorage)
       });
-      firestore = getFirestore(app);
-      storage = getStorage(app);
-      
-      console.log('Firebase initialized successfully');
+      console.log('Firebase auth initialized');
     } catch (error) {
-      console.error('Firebase initialization error:', error);
+      console.error('Firebase auth initialization error:', error);
       throw error;
     }
+  }
+  
+  if (!firestore) {
+    firestore = getFirestore(app);
+    console.log('Firestore initialized');
+  }
+  
+  if (!storage) {
+    storage = getStorage(app);
+    console.log('Firebase storage initialized');
   }
   
   return { app, auth, firestore, storage };
@@ -57,24 +67,25 @@ export const initializeFirebase = () => {
 
 export const getFirebaseAuth = (): Auth => {
   if (!auth) {
-    throw new Error('Firebase not initialized. Call initializeFirebase() first.');
+    console.warn('Auth not initialized, attempting initialization...');
+    try {
+      initializeFirebase();
+    } catch (error) {
+      console.error('Failed to initialize auth:', error);
+      throw new Error('Firebase Auth not initialized. Check your Firebase configuration in .env file.');
+    }
   }
   return auth;
 };
 
 export const getFirebaseFirestore = (): Firestore => {
   if (!firestore) {
-    // Try to initialize if not already done
     console.warn('Firestore not initialized, attempting initialization...');
     try {
-      if (!app) {
-        app = initializeApp(firebaseConfig);
-      }
-      firestore = getFirestore(app);
-      console.log('Firestore initialized on demand');
+      initializeFirebase();
     } catch (error) {
       console.error('Failed to initialize Firestore:', error);
-      throw new Error('Firebase not initialized. Check your Firebase configuration in .env file.');
+      throw new Error('Firestore not initialized. Check your Firebase configuration in .env file.');
     }
   }
   return firestore;
@@ -82,7 +93,13 @@ export const getFirebaseFirestore = (): Firestore => {
 
 export const getFirebaseStorage = (): FirebaseStorage => {
   if (!storage) {
-    throw new Error('Firebase not initialized. Call initializeFirebase() first.');
+    console.warn('Storage not initialized, attempting initialization...');
+    try {
+      initializeFirebase();
+    } catch (error) {
+      console.error('Failed to initialize Storage:', error);
+      throw new Error('Firebase Storage not initialized. Check your Firebase configuration in .env file.');
+    }
   }
   return storage;
 };

@@ -346,6 +346,74 @@ export { firestore, doc, setDoc, updateDoc, serverTimestamp, arrayUnion, collect
 
 ---
 
+### Breaking Change #18: Firebase Double Initialization
+**Issue**: `initializeAuth` was being called twice (once eagerly at module load, once lazily on first access), causing "Component auth has not been registered yet" error
+
+**Files Affected**:
+- `services/firebase/config.ts`
+
+**Fix Applied**:
+```typescript
+// Only initialize app eagerly, services lazily
+try {
+  app = initializeApp(firebaseConfig);
+  console.log('Firebase app initialized');
+} catch (error) {
+  console.error('Firebase app initialization error:', error);
+}
+
+// Services initialized on-demand in getters
+export const getFirebaseAuth = (): Auth => {
+  if (!auth) {
+    initializeFirebase(); // Initializes auth lazily
+  }
+  return auth;
+};
+```
+
+**Status**: ✅ Fixed (Attempt 2/3)  
+**Testing**: ⏳ Awaiting user reload
+
+**Notes**:
+- Firebase doesn't allow initializing auth twice on the same app instance
+- Changed to initialize only the app eagerly, services lazily on first access
+- All getters now call `initializeFirebase()` if service not initialized
+
+---
+
+### Breaking Change #19: Firebase Auth for React Native
+
+**Issue**: Using web Firebase Auth instead of React Native Firebase Auth persistence
+
+**Files Affected**:
+- `services/firebase/config.ts`
+- `package.json` (missing `@react-native-async-storage/async-storage`)
+
+**Fix Applied**:
+```typescript
+// Before
+import { getAuth } from 'firebase/auth';
+auth = getAuth(app);
+
+// After
+import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(AsyncStorage)
+});
+```
+
+**Status**: ✅ Fixed (Attempt 2/3)  
+**Testing**: ⏳ Awaiting user reload
+
+**Notes**:
+- Installed `@react-native-async-storage/async-storage`
+- React Native requires special persistence configuration
+- Must use `initializeAuth` instead of `getAuth` for React Native
+
+---
+
 ## Testing Status
 
 - [x] Phase 8.1: Build Test - ✅ PASSED
