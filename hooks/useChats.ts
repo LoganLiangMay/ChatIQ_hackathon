@@ -6,7 +6,7 @@
  * - Returns sorted chat list
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { collection, query, where, orderBy, onSnapshot, getDoc, doc as firestoreDoc } from 'firebase/firestore';
 import { firestore } from '@/services/firebase/firestore';
 import { db } from '@/services/database/sqlite';
@@ -23,7 +23,7 @@ export function useChats(userId: string): UseChatsReturn {
   const [loading, setLoading] = useState(true);
   
   // Load chats from SQLite
-  const loadChats = async () => {
+  const loadChats = useCallback(async () => {
     if (!userId) return;
     
     try {
@@ -69,12 +69,12 @@ export function useChats(userId: string): UseChatsReturn {
       console.error('Failed to load chats:', error);
       setLoading(false);
     }
-  };
+  }, [userId]);
   
   // Initial load
   useEffect(() => {
     loadChats();
-  }, [userId]);
+  }, [loadChats]);
   
   // Set up Firebase listener for chat updates
   useEffect(() => {
@@ -130,7 +130,7 @@ export function useChats(userId: string): UseChatsReturn {
       console.log('Cleaning up chats listener');
       unsubscribe();
     };
-  }, [userId]);
+  }, [userId, loadChats]);
   
   return {
     chats,

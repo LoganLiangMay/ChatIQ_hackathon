@@ -2,11 +2,13 @@
 
 A production-quality WhatsApp-like messaging app built with React Native, Expo, and Firebase.
 
+**Current Version**: Expo SDK 54 | React 19 | React Native 0.81
+
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Node.js 20+
-- Expo Go app on iPhone/iPad
+- Expo Go app (SDK 54) on iPhone/iPad
 - Firebase project set up
 - `.env` file configured with Firebase credentials
 
