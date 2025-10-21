@@ -411,6 +411,35 @@ auth = getAuth(app);
 
 ---
 
+### Breaking Change #20: Module Load Circular Dependency
+
+**Issue**: `services/firebase/firestore.ts` was calling `getFirebaseFirestore()` at module load time (line 9), creating a circular initialization problem when other modules imported it
+
+**Files Affected**:
+- `services/firebase/firestore.ts`
+
+**Fix Applied**:
+```typescript
+// Before (BROKEN - calls at module load)
+export const firestore = getFirebaseFirestore();
+
+// After (FIXED - lazy getter)
+const getFirestore = () => getFirebaseFirestore();
+
+// Then replace all firestore references with getFirestore()
+const chatRef = doc(getFirestore(), 'chats', chatId);
+```
+
+**Status**: ✅ Fixed (Attempt 4/4)  
+**Testing**: ⏳ Awaiting user reload
+
+**Notes**:
+- Module-load initialization caused Firebase Auth to be initialized before the app was ready
+- Lazy evaluation ensures Firebase services are only initialized when actually used
+- All 5 functions in the file updated to use `getFirestore()` instead of direct `firestore` reference
+
+---
+
 ## Testing Status
 
 - [x] Phase 8.1: Build Test - ✅ PASSED

@@ -5,14 +5,14 @@
 import { doc, setDoc, updateDoc, serverTimestamp, arrayUnion, collection } from 'firebase/firestore';
 import { getFirebaseFirestore } from './config';
 
-// Export firestore getter for lazy initialization
-export const firestore = getFirebaseFirestore();
+// Lazy getter for firestore instance to avoid module load initialization
+const getFirestore = () => getFirebaseFirestore();
 
 /**
  * Create or update a chat document
  */
 export async function createOrUpdateChat(chatId: string, data: any) {
-  const chatRef = doc(firestore, 'chats', chatId);
+  const chatRef = doc(getFirestore(), 'chats', chatId);
   await setDoc(chatRef, {
     ...data,
     updatedAt: serverTimestamp()
@@ -28,7 +28,7 @@ export async function updateChatLastMessage(
   senderId: string,
   senderName: string
 ) {
-  const chatRef = doc(firestore, 'chats', chatId);
+  const chatRef = doc(getFirestore(), 'chats', chatId);
   await updateDoc(chatRef, {
     lastMessage: {
       content,
@@ -44,7 +44,7 @@ export async function updateChatLastMessage(
  * Mark message as delivered
  */
 export async function markMessageAsDelivered(chatId: string, messageId: string, userId: string) {
-  const messageRef = doc(firestore, `chats/${chatId}/messages`, messageId);
+  const messageRef = doc(getFirestore(), `chats/${chatId}/messages`, messageId);
   await updateDoc(messageRef, {
     deliveredTo: arrayUnion(userId)
   });
@@ -54,7 +54,7 @@ export async function markMessageAsDelivered(chatId: string, messageId: string, 
  * Mark message as read
  */
 export async function markMessageAsRead(chatId: string, messageId: string, userId: string) {
-  const messageRef = doc(firestore, `chats/${chatId}/messages`, messageId);
+  const messageRef = doc(getFirestore(), `chats/${chatId}/messages`, messageId);
   await updateDoc(messageRef, {
     readBy: arrayUnion(userId)
   });
@@ -64,12 +64,12 @@ export async function markMessageAsRead(chatId: string, messageId: string, userI
  * Update user online status
  */
 export async function updateOnlineStatus(userId: string, online: boolean) {
-  const userRef = doc(firestore, 'users', userId);
+  const userRef = doc(getFirestore(), 'users', userId);
   await updateDoc(userRef, {
     online,
     lastSeen: serverTimestamp()
   });
 }
 
-// Note: firestore instance is exported above (line 9)
+// Note: Firestore instance accessed lazily via getFirestore()
 // Other Firebase functions should be imported directly from 'firebase/firestore'
