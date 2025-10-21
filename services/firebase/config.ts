@@ -1,7 +1,8 @@
 import { initializeApp, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
+import { initializeAuth, getReactNativePersistence, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
 const firebaseConfig = {
@@ -21,7 +22,10 @@ let storage: FirebaseStorage;
 // Initialize Firebase eagerly to avoid module load order issues
 try {
   app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
+  // Use initializeAuth with AsyncStorage for React Native
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage)
+  });
   firestore = getFirestore(app);
   storage = getStorage(app);
   console.log('Firebase initialized successfully');
@@ -34,7 +38,10 @@ export const initializeFirebase = () => {
   if (!app) {
     try {
       app = initializeApp(firebaseConfig);
-      auth = getAuth(app);
+      // Use initializeAuth with AsyncStorage for React Native
+      auth = initializeAuth(app, {
+        persistence: getReactNativePersistence(AsyncStorage)
+      });
       firestore = getFirestore(app);
       storage = getStorage(app);
       
