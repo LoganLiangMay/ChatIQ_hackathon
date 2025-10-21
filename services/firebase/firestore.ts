@@ -71,8 +71,5 @@ export async function updateOnlineStatus(userId: string, online: boolean) {
   });
 }
 
-export { firestore, doc, setDoc, updateDoc, serverTimestamp, arrayUnion, collection };
-
-
-
-
+// Note: firestore instance is exported above (line 9)
+// Other Firebase functions should be imported directly from 'firebase/firestore'
