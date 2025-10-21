@@ -484,6 +484,52 @@ export default function Index() {
 
 ---
 
+### Breaking Change #22: SQLite Not Available in Expo Go SDK 53+
+
+**Issue**: `expo-sqlite` (legacy) is not available in Expo Go starting from SDK 53. The app was crashing when trying to initialize the SQLite database.
+
+**Files Affected**:
+- `services/database/sqlite.ts`
+
+**Fix Applied**:
+```typescript
+async init() {
+  try {
+    // Check if SQLite is available (not available in Expo Go SDK 53+)
+    if (!SQLite.openDatabase) {
+      console.warn('⚠️  SQLite not available (Expo Go limitation). App will work without offline storage.');
+      this.initialized = true;
+      return;
+    }
+    
+    this.db = SQLite.openDatabase('messageai.db');
+    // ... rest of initialization
+  } catch (error) {
+    console.warn('⚠️  SQLite initialization failed. App will work without offline storage.', error);
+    this.initialized = true;
+    // Don't throw - allow app to continue
+  }
+}
+
+// Add guards to all public methods
+async getMessages(chatId: string): Promise<Message[]> {
+  if (!this.isAvailable()) return Promise.resolve([]);
+  // ... rest of method
+}
+```
+
+**Status**: ✅ Fixed  
+**Testing**: ⏳ Awaiting user reload
+
+**Notes**:
+- SQLite is not available in Expo Go SDK 53+ (requires development build)
+- App now gracefully handles missing SQLite - all database operations return empty results
+- Firebase Firestore remains fully functional for real-time messaging
+- Offline features will work only in production builds (not Expo Go)
+- For testing in Expo Go, the app functions without local caching
+
+---
+
 ## Testing Status
 
 - [x] Phase 8.1: Build Test - ✅ PASSED

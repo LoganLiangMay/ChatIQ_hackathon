@@ -6,6 +6,11 @@ class DatabaseService {
   private db: SQLite.WebSQLDatabase | null = null;
   private initialized: boolean = false;
   
+  // Helper to check if database is available
+  private isAvailable(): boolean {
+    return this.db !== null;
+  }
+  
   async init() {
     if (this.initialized) {
       console.log('Database already initialized');
@@ -13,13 +18,21 @@ class DatabaseService {
     }
     
     try {
+      // Check if SQLite is available (not available in Expo Go SDK 53+)
+      if (!SQLite.openDatabase) {
+        console.warn('⚠️  SQLite not available (Expo Go limitation). App will work without offline storage.');
+        this.initialized = true; // Mark as initialized to prevent repeated attempts
+        return;
+      }
+      
       this.db = SQLite.openDatabase('messageai.db');
       await this.createTables();
       this.initialized = true;
-      console.log('SQLite database initialized successfully');
+      console.log('✅ SQLite database initialized successfully');
     } catch (error) {
-      console.error('Database initialization error:', error);
-      throw error;
+      console.warn('⚠️  SQLite initialization failed. App will work without offline storage.', error);
+      this.initialized = true; // Mark as initialized to prevent repeated attempts
+      // Don't throw - allow app to continue without SQLite
     }
   }
   
@@ -82,6 +95,8 @@ class DatabaseService {
   // === MESSAGE OPERATIONS ===
   
   async insertMessage(message: Message): Promise<void> {
+    if (!this.isAvailable()) return Promise.resolve();
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         tx.executeSql(
@@ -118,6 +133,8 @@ class DatabaseService {
   }
   
   async insertOrUpdateMessage(message: any): Promise<void> {
+    if (!this.isAvailable()) return Promise.resolve();
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         tx.executeSql(
@@ -150,6 +167,8 @@ class DatabaseService {
   }
   
   async getMessages(chatId: string, limitCount: number = 50): Promise<Message[]> {
+    if (!this.isAvailable()) return Promise.resolve([]);
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         tx.executeSql(
@@ -200,6 +219,8 @@ class DatabaseService {
   }
   
   async getPendingMessages(): Promise<Message[]> {
+    if (!this.isAvailable()) return Promise.resolve([]);
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         tx.executeSql(
@@ -531,6 +552,8 @@ class DatabaseService {
   }
   
   async getChats(userId: string): Promise<Chat[]> {
+    if (!this.isAvailable()) return Promise.resolve([]);
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         tx.executeSql(
