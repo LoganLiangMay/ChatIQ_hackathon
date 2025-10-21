@@ -381,36 +381,33 @@ export const getFirebaseAuth = (): Auth => {
 
 ---
 
-### Breaking Change #19: Firebase Auth for React Native
+### Breaking Change #19: Firebase Auth Initialization Pattern
 
-**Issue**: Using web Firebase Auth instead of React Native Firebase Auth persistence
+**Issue**: `initializeAuth` with `getReactNativePersistence(AsyncStorage)` is not compatible with Firebase JavaScript SDK v10 in React Native/Expo
 
 **Files Affected**:
 - `services/firebase/config.ts`
-- `package.json` (missing `@react-native-async-storage/async-storage`)
 
-**Fix Applied**:
+**Fix Applied (Attempt 3/3)**:
 ```typescript
-// Before
-import { getAuth } from 'firebase/auth';
-auth = getAuth(app);
-
-// After
+// Attempted (FAILED): initializeAuth with AsyncStorage persistence
 import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+auth = initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) });
+// Error: "Component auth has not been registered yet"
 
-auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage)
-});
+// Working Solution: Use standard getAuth (works in React Native with Expo)
+import { getAuth } from 'firebase/auth';
+auth = getAuth(app);
 ```
 
-**Status**: ✅ Fixed (Attempt 2/3)  
+**Status**: ✅ Fixed (Attempt 3/3)  
 **Testing**: ⏳ Awaiting user reload
 
 **Notes**:
-- Installed `@react-native-async-storage/async-storage`
-- React Native requires special persistence configuration
-- Must use `initializeAuth` instead of `getAuth` for React Native
+- Firebase JavaScript SDK v10 (used by Expo) works with `getAuth(app)` in React Native
+- AsyncStorage persistence is NOT needed for the JavaScript SDK (only for native Firebase SDK `@react-native-firebase`)
+- The JavaScript SDK handles persistence automatically in React Native
 
 ---
 

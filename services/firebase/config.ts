@@ -1,8 +1,7 @@
 import { initializeApp, FirebaseApp } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence, Auth } from 'firebase/auth';
+import { getAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
 const firebaseConfig = {
@@ -42,9 +41,7 @@ export const initializeFirebase = () => {
   // Initialize services lazily
   if (!auth) {
     try {
-      auth = initializeAuth(app, {
-        persistence: getReactNativePersistence(AsyncStorage)
-      });
+      auth = getAuth(app);
       console.log('Firebase auth initialized');
     } catch (error) {
       console.error('Firebase auth initialization error:', error);
