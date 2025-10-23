@@ -24,8 +24,52 @@ export default function ActionsScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { chats } = useChats(user?.uid || '');
+  const { extractActionItems } = require('@/hooks/useAI').useAI();
   const [allActionItems, setAllActionItems] = useState<ActionItemWithChat[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+
+  // Auto-scan all chats for action items on first load
+  const scanAllChats = async () => {
+    if (!user?.uid || !chats || chats.length === 0) return;
+    
+    setScanning(true);
+    console.log('🔍 Scanning', chats.length, 'chats for action items...');
+    
+    try {
+      let totalItemsFound = 0;
+      
+      // Extract action items from each chat (in parallel for speed)
+      const extractPromises = chats.slice(0, 10).map(async (chat) => {
+        try {
+          const items = await extractActionItems(chat.id, 50);
+          
+          if (items && items.length > 0) {
+            // Filter and save to Firestore
+            const filteredItems = items.map((item: any) => ({
+              ...item,
+              owner: item.owner === 'null' ? undefined : item.owner,
+              deadline: item.deadline === 'null' ? undefined : item.deadline,
+            }));
+            
+            await actionItemsService.saveActionItems(user.uid!, chat.id, filteredItems);
+            totalItemsFound += filteredItems.length;
+            console.log(`✅ Found ${filteredItems.length} action items in ${chat.id}`);
+          }
+        } catch (error) {
+          console.error(`Error extracting from chat ${chat.id}:`, error);
+        }
+      });
+      
+      await Promise.all(extractPromises);
+      console.log(`✅ Scan complete! Found ${totalItemsFound} total action items`);
+    } catch (error) {
+      console.error('Error scanning chats:', error);
+      Alert.alert('Error', 'Failed to scan chats for action items');
+    } finally {
+      setScanning(false);
+    }
+  };
 
   // Load action items with real-time updates
   useEffect(() => {
@@ -41,7 +85,7 @@ export default function ActionsScreen() {
           where('userId', '==', user.uid)
         );
 
-        unsubscribe = onSnapshot(q, (snapshot) => {
+        unsubscribe = onSnapshot(q, async (snapshot) => {
           const items: ActionItemWithChat[] = [];
 
           snapshot.forEach((doc) => {
@@ -74,6 +118,12 @@ export default function ActionsScreen() {
           setAllActionItems(items);
           setLoading(false);
           console.log('📋 Loaded', items.length, 'action items');
+          
+          // If no items found and we have chats, trigger auto-scan
+          if (items.length === 0 && chats.length > 0 && !scanning) {
+            console.log('📋 No action items found, triggering auto-scan...');
+            await scanAllChats();
+          }
         });
       } catch (error) {
         console.error('Error setting up action items listener:', error);
@@ -90,10 +140,8 @@ export default function ActionsScreen() {
     };
   }, [user, chats]);
 
-  const loadAllActions = () => {
-    // Trigger a reload by toggling loading state
-    setLoading(true);
-    setTimeout(() => setLoading(false), 500);
+  const loadAllActions = async () => {
+    await scanAllChats();
   };
 
   const handleToggleItem = async (id: string) => {
@@ -156,18 +204,29 @@ export default function ActionsScreen() {
         </View>
 
         {/* Content */}
-        {loading ? (
+        {loading || scanning ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#007AFF" />
-            <Text style={styles.loadingText}>Loading action items...</Text>
+            <Text style={styles.loadingText}>
+              {scanning ? 'Scanning chats for action items...' : 'Loading action items...'}
+            </Text>
+            {scanning && (
+              <Text style={styles.loadingSubtext}>
+                This may take a moment
+              </Text>
+            )}
           </View>
         ) : allActionItems.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="checkbox-outline" size={64} color="#CCC" />
-            <Text style={styles.emptyText}>No action items</Text>
+            <Text style={styles.emptyText}>No action items found</Text>
             <Text style={styles.emptySubtext}>
-              Open a chat and tap the checkbox icon to extract action items
+              No pending action items were found in your recent conversations
             </Text>
+            <TouchableOpacity onPress={loadAllActions} style={styles.rescanButton}>
+              <Ionicons name="refresh" size={20} color="#007AFF" />
+              <Text style={styles.rescanButtonText}>Scan Again</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <SectionList
@@ -266,6 +325,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
   },
+  loadingSubtext: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#999',
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -283,6 +347,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     textAlign: 'center',
+  },
+  rescanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#F2F2F7',
+    borderRadius: 8,
+  },
+  rescanButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#007AFF',
   },
   sectionHeader: {
     flexDirection: 'row',
