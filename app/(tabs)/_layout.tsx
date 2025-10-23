@@ -6,15 +6,20 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: '#007AFF',
-        tabBarInactiveTintColor: '#999',
-        headerShown: true,
-        headerStyle: {
-          backgroundColor: '#007AFF',
+        tabBarInactiveTintColor: '#8E8E93',
+        headerShown: false, // Hide header for seamless iMessage-like design
+        tabBarStyle: {
+          backgroundColor: '#FFFFFF',
+          borderTopWidth: 0.5,
+          borderTopColor: '#C6C6C8',
+          paddingTop: 8,
+          paddingBottom: 8,
+          height: 60,
         },
-        headerTintColor: '#fff',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        }
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '500',
+        },
       }}
     >
       <Tabs.Screen
@@ -23,7 +28,41 @@ export default function TabsLayout() {
           title: 'Chats',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="chatbubbles" size={size} color={color} />
-          )
+          ),
+          href: '/chats',
+        }}
+      />
+      <Tabs.Screen
+        name="actions"
+        options={{
+          title: 'Actions',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="checkbox-outline" size={size} color={color} />
+          ),
+          href: '/actions',
+        }}
+      />
+      <Tabs.Screen
+        name="search"
+        options={{
+          title: 'Search',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="search" size={size} color={color} />
+          ),
+          href: null, // Hide from tabs, accessible via chats screen
+        }}
+      />
+      <Tabs.Screen
+        name="chats/search"
+        options={{
+          href: null, // Hide from tabs
+        }}
+      />
+      <Tabs.Screen
+        name="chats/[chatId]"
+        options={{
+          href: null, // Hide from tabs (individual chat screen)
+          tabBarStyle: { display: 'none' }, // Hide bottom tab bar in chat screen
         }}
       />
       <Tabs.Screen
@@ -31,8 +70,8 @@ export default function TabsLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" size={size} color={color} />
-          )
+            <Ionicons name="person-circle" size={size} color={color} />
+          ),
         }}
       />
     </Tabs>

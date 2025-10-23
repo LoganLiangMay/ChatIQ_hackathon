@@ -48,6 +48,7 @@ class DatabaseService {
               name TEXT,
               groupPicture TEXT,
               participants TEXT NOT NULL,
+              participantDetails TEXT,
               admins TEXT,
               lastMessage TEXT,
               updatedAt INTEGER,
@@ -192,6 +193,8 @@ class DatabaseService {
   }
   
   async getMessage(messageId: string): Promise<Message | null> {
+    if (!this.isAvailable()) return Promise.resolve(null);
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         tx.executeSql(
@@ -246,8 +249,10 @@ class DatabaseService {
   async updateMessageStatus(
     messageId: string,
     syncStatus: string,
-    deliveryStatus: string
+    deliveryStatus: string | null = null
   ): Promise<void> {
+    if (!this.isAvailable()) return Promise.resolve();
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         tx.executeSql(
@@ -267,6 +272,8 @@ class DatabaseService {
   }
   
   async getUnreadMessages(chatId: string, userId: string): Promise<Message[]> {
+    if (!this.isAvailable()) return Promise.resolve([]);
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         tx.executeSql(
@@ -296,6 +303,8 @@ class DatabaseService {
    * Mark a message as delivered for a specific user
    */
   async markMessageAsDelivered(messageId: string, userId: string): Promise<void> {
+    if (!this.isAvailable()) return Promise.resolve();
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         // First, get the current deliveredTo array
@@ -342,6 +351,8 @@ class DatabaseService {
    * Mark a message as read for a specific user
    */
   async markMessageAsRead(messageId: string, userId: string): Promise<void> {
+    if (!this.isAvailable()) return Promise.resolve();
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         // First, get the current readBy and deliveredTo arrays
@@ -394,6 +405,8 @@ class DatabaseService {
    * Mark all unread messages in a chat as read (batch operation)
    */
   async markAllMessagesAsRead(chatId: string, userId: string): Promise<string[]> {
+    if (!this.isAvailable()) return Promise.resolve([]);
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         // First, get all unread messages
@@ -465,6 +478,8 @@ class DatabaseService {
    * Search messages by content
    */
   async searchMessages(searchQuery: string, limitCount: number = 20): Promise<Message[]> {
+    if (!this.isAvailable()) return Promise.resolve([]);
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         tx.executeSql(
@@ -494,6 +509,8 @@ class DatabaseService {
    * Search chats by name
    */
   async searchChats(searchQuery: string, currentUserId: string): Promise<Chat[]> {
+    if (!this.isAvailable()) return Promise.resolve([]);
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         tx.executeSql(
@@ -523,19 +540,22 @@ class DatabaseService {
   // === CHAT OPERATIONS ===
   
   async insertChat(chat: Chat): Promise<void> {
+    if (!this.isAvailable()) return Promise.resolve();
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         tx.executeSql(
           `INSERT OR REPLACE INTO chats (
-            id, type, name, groupPicture, participants, admins, 
+            id, type, name, groupPicture, participants, participantDetails, admins, 
             lastMessage, updatedAt, createdAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             chat.id,
             chat.type,
             chat.name || '',
             chat.groupPicture || '',
             JSON.stringify(chat.participants),
+            JSON.stringify(chat.participantDetails || {}),
             JSON.stringify(chat.admins || []),
             JSON.stringify(chat.lastMessage || null),
             chat.updatedAt || Date.now(),
@@ -563,6 +583,7 @@ class DatabaseService {
             const chats = rows._array.map((row: any) => ({
               ...row,
               participants: JSON.parse(row.participants),
+              participantDetails: row.participantDetails ? JSON.parse(row.participantDetails) : {},
               admins: JSON.parse(row.admins || '[]'),
               lastMessage: row.lastMessage ? JSON.parse(row.lastMessage) : null
             }));
@@ -578,6 +599,8 @@ class DatabaseService {
   }
   
   async getChat(chatId: string): Promise<Chat | null> {
+    if (!this.isAvailable()) return Promise.resolve(null);
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         tx.executeSql(
@@ -589,6 +612,7 @@ class DatabaseService {
               resolve({
                 ...row,
                 participants: JSON.parse(row.participants),
+                participantDetails: row.participantDetails ? JSON.parse(row.participantDetails) : {},
                 admins: JSON.parse(row.admins || '[]'),
                 lastMessage: row.lastMessage ? JSON.parse(row.lastMessage) : null
               } as Chat);
@@ -606,6 +630,8 @@ class DatabaseService {
   }
   
   async updateChat(chatId: string, updates: Partial<Chat>): Promise<void> {
+    if (!this.isAvailable()) return Promise.resolve();
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         const setClauses: string[] = [];
@@ -622,6 +648,10 @@ class DatabaseService {
         if (updates.participants !== undefined) {
           setClauses.push('participants = ?');
           values.push(JSON.stringify(updates.participants));
+        }
+        if (updates.participantDetails !== undefined) {
+          setClauses.push('participantDetails = ?');
+          values.push(JSON.stringify(updates.participantDetails));
         }
         if (updates.admins !== undefined) {
           setClauses.push('admins = ?');
@@ -651,6 +681,8 @@ class DatabaseService {
   }
   
   async deleteChat(chatId: string): Promise<void> {
+    if (!this.isAvailable()) return Promise.resolve();
+    
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         // Delete messages first

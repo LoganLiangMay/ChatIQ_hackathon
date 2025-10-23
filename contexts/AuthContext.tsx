@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { useRouter, useSegments } from 'expo-router';
-import { getFirebaseAuth } from '@/services/firebase/config';
+import { getFirebaseAuth, initializeFirebase } from '@/services/firebase/config';
 import { useNotifications } from '@/hooks/useNotifications';
 
 interface AuthContextType {
@@ -37,15 +37,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   
   // Monitor Firebase auth state
   useEffect(() => {
-    const auth = getFirebaseAuth();
+    let unsubscribe: (() => void) | undefined;
     
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      console.log('Auth state changed:', firebaseUser?.uid || 'signed out');
-      setUser(firebaseUser);
-      setLoading(false);
-    });
+    const setupAuthListener = async () => {
+      try {
+        console.log('🔵 [AuthContext] Initializing Firebase...');
+        await initializeFirebase();
+        console.log('✅ [AuthContext] Firebase initialized');
+        
+        const auth = await getFirebaseAuth();
+        console.log('✅ [AuthContext] Auth instance obtained');
+        
+        unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+          console.log('Auth state changed:', firebaseUser?.uid || 'signed out');
+          setUser(firebaseUser);
+          setLoading(false);
+        });
+      } catch (error) {
+        console.error('❌ [AuthContext] Failed to initialize Firebase:', error);
+        setLoading(false);
+      }
+    };
     
-    return () => unsubscribe();
+    setupAuthListener();
+    
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
   
   // Auto-navigate based on auth state

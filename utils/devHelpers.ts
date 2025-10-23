@@ -6,7 +6,7 @@
  * Do not use in production code.
  */
 
-import { v4 as uuidv4 } from 'uuid';
+import { generateUUID } from '@/utils/uuid';
 import { getAuth } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { firestore } from '@/services/firebase/firestore';
@@ -24,7 +24,7 @@ export async function createTestDirectChat(otherUserId: string, otherUserName: s
     throw new Error('Not authenticated');
   }
   
-  const chatId = uuidv4();
+  const chatId = generateUUID();
   
   // Create chat in Firestore
   await setDoc(doc(firestore, 'chats', chatId), {

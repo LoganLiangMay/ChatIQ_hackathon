@@ -11,9 +11,10 @@
   "dependencies": {
     "@expo/webpack-config": "^19.0.0",
     "@react-native-async-storage/async-storage": "^2.2.0",
-    "@react-native-community/netinfo": "11.4.1",
+    "@react-native-community/netinfo": "^11.4.1",
     "expo": "^54.0.17",
     "expo-constants": "~18.0.9",
+    "expo-crypto": "^15.0.7",
     "expo-device": "~8.0.9",
     "expo-haptics": "~15.0.7",
     "expo-image-manipulator": "~14.0.7",

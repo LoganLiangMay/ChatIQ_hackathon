@@ -10,15 +10,23 @@ import { formatTimestamp } from '@/utils/formatters';
 import { MessageStatus } from './MessageStatus';
 import { ImageMessage } from './ImageMessage';
 import { ImageViewer } from './ImageViewer';
+import { PriorityBadge } from '@/components/ai/PriorityBadge';
 
 interface MessageBubbleProps {
   message: Message;
   currentUserId: string;
   showSenderName?: boolean; // For group chats
   isGroup?: boolean;
+  showStatus?: boolean; // Whether to show checkmarks (default: false for iMessage style)
 }
 
-export function MessageBubble({ message, currentUserId, showSenderName = false, isGroup = false }: MessageBubbleProps) {
+export function MessageBubble({ 
+  message, 
+  currentUserId, 
+  showSenderName = false, 
+  isGroup = false,
+  showStatus = false // iMessage style: don't show checkmarks on individual messages
+}: MessageBubbleProps) {
   const isSentByMe = message.senderId === currentUserId;
   const [viewerVisible, setViewerVisible] = useState(false);
   
@@ -31,6 +39,17 @@ export function MessageBubble({ message, currentUserId, showSenderName = false, 
       {/* Sender name (for group chats) */}
       {showSenderName && !isSentByMe && (
         <Text style={styles.senderName}>{message.senderName}</Text>
+      )}
+      
+      {/* 🤖 AI: Priority Badge (for incoming high-priority messages) */}
+      {!isSentByMe && message.priority && message.priority.isPriority && (
+        <View style={styles.priorityBadgeContainer}>
+          <PriorityBadge
+            urgencyLevel={message.priority.urgencyLevel}
+            score={message.priority.score}
+            compact={false}
+          />
+        </View>
       )}
       
       {/* Message content */}
@@ -59,7 +78,7 @@ export function MessageBubble({ message, currentUserId, showSenderName = false, 
         </>
       )}
       
-      {/* Timestamp and status */}
+      {/* Timestamp only (no status checkmarks on individual messages) */}
       <View style={styles.footer}>
         <Text style={[
           styles.timestamp,
@@ -68,8 +87,8 @@ export function MessageBubble({ message, currentUserId, showSenderName = false, 
           {formatTimestamp(message.timestamp)}
         </Text>
         
-        {/* Status indicator (only for sent messages) */}
-        {isSentByMe && (
+        {/* Optional: Show status checkmarks (if showStatus is true) */}
+        {isSentByMe && showStatus && (
           <MessageStatus message={message} isGroup={isGroup} />
         )}
       </View>
@@ -102,6 +121,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#666',
     marginBottom: 4,
+  },
+  priorityBadgeContainer: {
+    marginBottom: 6,
   },
   content: {
     fontSize: 16,

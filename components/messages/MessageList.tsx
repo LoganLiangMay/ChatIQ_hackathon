@@ -1,11 +1,13 @@
 /**
  * MessageList component
  * Displays a list of messages using FlatList (inverted for chat UI)
+ * Shows iMessage-style read receipts below the last sent message
  */
 
 import { FlatList, StyleSheet, View, Text, ActivityIndicator } from 'react-native';
 import { Message } from '@/types/message';
 import { MessageBubble } from './MessageBubble';
+import { ReadReceipt } from './ReadReceipt';
 
 interface MessageListProps {
   messages: Message[];
@@ -41,18 +43,37 @@ export function MessageList({
     );
   }
   
+  // Find the last message sent by current user (for read receipt)
+  const lastSentMessage = [...messages]
+    .reverse()
+    .find(msg => msg.senderId === currentUserId);
+  
   return (
     <FlatList
       data={messages}
       keyExtractor={(item) => item.id}
-      renderItem={({ item }) => (
-          <MessageBubble
-            message={item}
-            currentUserId={currentUserId}
-            showSenderName={showSenderNames}
-            isGroup={showSenderNames}
-          />
-      )}
+      renderItem={({ item, index }) => {
+        const isLastSentMessage = lastSentMessage && item.id === lastSentMessage.id;
+        
+        return (
+          <View>
+            <MessageBubble
+              message={item}
+              currentUserId={currentUserId}
+              showSenderName={showSenderNames}
+              isGroup={showSenderNames}
+              showStatus={false} // Don't show checkmarks on individual messages
+            />
+            
+            {/* Show "Read [time]" below the last sent message only (iMessage style) */}
+            {isLastSentMessage && item.senderId === currentUserId && (
+              <View style={styles.readReceiptContainer}>
+                <ReadReceipt message={item} isGroup={showSenderNames} />
+              </View>
+            )}
+          </View>
+        );
+      }}
       contentContainerStyle={styles.listContent}
       showsVerticalScrollIndicator={false}
       onEndReached={onEndReached}
@@ -95,6 +116,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     textAlign: 'center',
+  },
+  readReceiptContainer: {
+    alignSelf: 'flex-end',
+    marginRight: 8,
+    marginBottom: 4,
   },
 });
 

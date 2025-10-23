@@ -8,7 +8,7 @@
 
 import { db } from '@/services/database/sqlite';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
-import { firestore } from '@/services/firebase/firestore';
+import { getFirebaseFirestore } from '@/services/firebase/config';
 import { Message } from '@/types/message';
 import { Chat } from '@/types/chat';
 
@@ -110,6 +110,7 @@ class SearchService {
    */
   async searchUsers(searchQuery: string, currentUserId: string, limitCount: number = 10): Promise<UserSearchResult[]> {
     try {
+      const firestore = await getFirebaseFirestore();
       const usersRef = collection(firestore, 'users');
       
       // Firestore doesn't support case-insensitive search or LIKE queries

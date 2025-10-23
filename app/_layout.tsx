@@ -1,21 +1,28 @@
 import { useEffect, useState, useRef } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet, Text, AppState, AppStateStatus } from 'react-native';
 import { getAuth } from 'firebase/auth';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ErrorBoundary } from '@/components/error/ErrorBoundary';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { ErrorMessage } from '@/components/ui/ErrorMessage';
+import { MessageBanner } from '@/components/notifications/MessageBanner';
 import { initializeFirebase } from '@/services/firebase/config';
 import { initializeDatabase } from '@/services/database/sqlite';
 import { networkMonitor } from '@/services/network/NetworkMonitor';
 import { messageQueue } from '@/services/messages/MessageQueue';
+import { notificationManager } from '@/services/notifications/NotificationManager';
 import { updateOnlineStatus } from '@/services/firebase/firestore';
 
 export default function RootLayout() {
+  const router = useRouter();
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const appState = useRef(AppState.currentState);
+  
+  // Banner state for in-app notifications
+  const [bannerVisible, setBannerVisible] = useState(false);
+  const [bannerData, setBannerData] = useState<any>(null);
   
   // Initialize app
   useEffect(() => {
@@ -99,6 +106,33 @@ export default function RootLayout() {
     };
   }, []);
   
+  // Initialize notification manager
+  useEffect(() => {
+    if (!isReady) return;
+    
+    // Setup in-app banner callback
+    notificationManager.setInAppBannerCallback((notification) => {
+      console.log('📱 [RootLayout] Showing in-app banner:', notification.senderName);
+      setBannerData(notification);
+      setBannerVisible(true);
+    });
+    
+    // Request notification permissions
+    notificationManager.requestPermissions();
+    
+    // Setup notification tap handler
+    const setupHandler = async () => {
+      const subscription = await notificationManager.setupNotificationHandler(router);
+      return subscription;
+    };
+    
+    const cleanupPromise = setupHandler();
+    
+    return () => {
+      cleanupPromise.then(sub => sub.remove());
+    };
+  }, [isReady, router]);
+  
   const handleRetry = async () => {
     setError(null);
     setIsReady(false);
@@ -138,6 +172,17 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <AuthProvider>
+        {/* In-app notification banner */}
+        {bannerVisible && bannerData && (
+          <MessageBanner
+            senderName={bannerData.senderName}
+            message={bannerData.message}
+            chatId={bannerData.chatId}
+            visible={bannerVisible}
+            onDismiss={() => setBannerVisible(false)}
+          />
+        )}
+        
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />

@@ -22,7 +22,7 @@ import * as admin from 'firebase-admin';
 admin.initializeApp();
 
 /**
- * Send push notification when a new message is created
+ * Process new messages: Send push notifications + AI priority detection
  * Triggers on: /chats/{chatId}/messages/{messageId}
  */
 export const onMessageCreated = functions.firestore
@@ -30,7 +30,7 @@ export const onMessageCreated = functions.firestore
   .onCreate(async (snapshot, context) => {
     try {
       const messageData = snapshot.data();
-      const { chatId } = context.params;
+      const { chatId, messageId } = context.params;
       
       // Get sender ID
       const senderId = messageData.senderId;
@@ -75,50 +75,126 @@ export const onMessageCreated = functions.firestore
         }
       });
       
+      // Send push notifications (only if tokens exist)
+      let result = null;
       if (tokens.length === 0) {
-        console.log('No push tokens found for recipients');
-        return null;
+        console.log('⏭️ No push tokens found, skipping push notifications');
+      } else {
+        // Prepare notification payload
+        const notificationTitle = isGroup ? chatName : senderName;
+        const notificationBody = isGroup ? `${senderName}: ${content}` : content;
+        
+        // Send notifications using Expo Push Notification service
+        const messages = tokens.map(token => ({
+          to: token,
+          sound: 'default',
+          title: notificationTitle,
+          body: notificationBody,
+          data: {
+            type: 'message',
+            chatId,
+            senderId,
+            senderName,
+          },
+          badge: 1, // Will be updated by client
+        }));
+        
+        // Send to Expo Push Notification service
+        const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
+        
+        const response = await fetch(expoPushUrl, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Accept-encoding': 'gzip, deflate',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(messages),
+        });
+        
+        result = await response.json();
+        console.log('✅ Push notifications sent:', result);
       }
       
-      // Prepare notification payload
-      const notificationTitle = isGroup ? chatName : senderName;
-      const notificationBody = isGroup ? `${senderName}: ${content}` : content;
-      
-      // Send notifications using Expo Push Notification service
-      const messages = tokens.map(token => ({
-        to: token,
-        sound: 'default',
-        title: notificationTitle,
-        body: notificationBody,
-        data: {
-          type: 'message',
-          chatId,
-          senderId,
-          senderName,
-        },
-        badge: 1, // Will be updated by client
-      }));
-      
-      // Send to Expo Push Notification service
-      const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
-      
-      const response = await fetch(expoPushUrl, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Accept-encoding': 'gzip, deflate',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(messages),
-      });
-      
-      const result = await response.json();
-      console.log('Push notifications sent:', result);
+      // ===============================================
+      // 🤖 AI: Auto-detect priority for text messages
+      // ===============================================
+      if (messageData.type === 'text' && messageData.content && !messageData.priority) {
+        try {
+          console.log('✅ Auto-detecting priority for message:', messageId);
+          
+          // Import AI functions (dynamic to avoid issues)
+          const { callChatCompletion } = require('./ai/openai');
+          const { PROMPTS } = require('./ai/prompts');
+          
+          // Call OpenAI to detect priority
+          const messages = PROMPTS.detectPriority(messageData.content);
+          const aiResponse = await callChatCompletion(messages, {
+            model: 'gpt-4o-mini',
+            temperature: 0.3,
+            maxTokens: 200,
+          });
+
+          const aiResult = aiResponse.choices[0].message.content;
+          
+          if (aiResult) {
+            const parsed = JSON.parse(aiResult);
+            
+            // Only save if it's actually a priority message (medium or higher)
+            if (parsed.isPriority && parsed.score >= 0.3) {
+              const priorityData = {
+                isPriority: parsed.isPriority,
+                score: Number(parsed.score),
+                urgencyLevel: parsed.urgencyLevel,
+                reason: parsed.reason,
+              };
+
+              // Update message with priority
+              await snapshot.ref.update({ priority: priorityData });
+              
+              // Update lastMessage in chat document
+              // Wait 500ms for chat document to be updated with the latest message
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
+              const chatRef = admin.firestore().collection('chats').doc(chatId);
+              const chatDoc = await chatRef.get();
+              
+              if (chatDoc.exists) {
+                const chatData = chatDoc.data();
+                
+                // Check if this message is still the last message (within 2 seconds)
+                const chatTimestamp = chatData?.lastMessage?.timestamp?.toMillis?.() || chatData?.lastMessage?.timestamp;
+                const messageTimestamp = messageData.timestamp?.toMillis?.() || messageData.timestamp;
+                const timeDiff = Math.abs(chatTimestamp - messageTimestamp);
+                
+                // If timestamps are within 2 seconds, this is likely the last message
+                if (timeDiff < 2000) {
+                  await chatRef.update({ 'lastMessage.priority': priorityData });
+                }
+              }
+
+              console.log('✅ Priority detected and saved:', {
+                messageId,
+                urgencyLevel: parsed.urgencyLevel,
+                score: parsed.score
+              });
+            }
+          }
+        } catch (aiError: any) {
+          // Don't fail the whole function if AI fails
+          console.error('⚠️ AI priority detection failed (non-critical):', {
+            error: aiError.message,
+            stack: aiError.stack,
+            messageId
+          });
+        }
+      }
+      // ===============================================
       
       return result;
       
     } catch (error) {
-      console.error('Error sending push notification:', error);
+      console.error('Error in onMessageCreated:', error);
       return null;
     }
   });
@@ -210,6 +286,20 @@ export const updateInactiveUsers = functions.pubsub
     }
   });
 
+/**
+ * AI Features - Priority Detection
+ * Analyze message content for urgency indicators
+ */
+export { detectPriority } from './ai/detectPriority';
 
+/**
+ * AI Features - Thread Summarization
+ * Generate concise summaries of conversation threads
+ */
+export { summarizeThread } from './ai/summarize';
 
-
+/**
+ * AI Features - Action Item Extraction
+ * Extract tasks and commitments from conversations
+ */
+export { extractActionItems } from './ai/extractActions';

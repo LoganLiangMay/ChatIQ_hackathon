@@ -10,8 +10,8 @@ import { getFirebaseAuth, getFirebaseFirestore } from './config';
 import { AuthFormData } from '@/types/user';
 
 export const signUp = async ({ email, password, displayName }: AuthFormData): Promise<User> => {
-  const auth = getFirebaseAuth();
-  const firestore = getFirebaseFirestore();
+  const auth = await getFirebaseAuth();
+  const firestore = await getFirebaseFirestore();
   
   try {
     // Create auth user
@@ -44,8 +44,8 @@ export const signUp = async ({ email, password, displayName }: AuthFormData): Pr
 };
 
 export const signIn = async ({ email, password }: AuthFormData): Promise<User> => {
-  const auth = getFirebaseAuth();
-  const firestore = getFirebaseFirestore();
+  const auth = await getFirebaseAuth();
+  const firestore = await getFirebaseFirestore();
   
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -66,8 +66,8 @@ export const signIn = async ({ email, password }: AuthFormData): Promise<User> =
 };
 
 export const signOut = async (): Promise<void> => {
-  const auth = getFirebaseAuth();
-  const firestore = getFirebaseFirestore();
+  const auth = await getFirebaseAuth();
+  const firestore = await getFirebaseFirestore();
   
   if (!auth.currentUser) return;
   

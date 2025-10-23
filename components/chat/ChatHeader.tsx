@@ -1,6 +1,7 @@
 /**
  * ChatHeader component
  * Displays chat name/title and online status
+ * Includes AI summarization button
  */
 
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
@@ -15,9 +16,11 @@ interface ChatHeaderProps {
   online?: boolean;
   lastSeen?: number;
   participantCount?: number;
+  onSummarize?: () => void;
+  onExtractActions?: () => void;
 }
 
-export function ChatHeader({ chatId, chatName, chatType, online, lastSeen, participantCount }: ChatHeaderProps) {
+export function ChatHeader({ chatId, chatName, chatType, online, lastSeen, participantCount, onSummarize, onExtractActions }: ChatHeaderProps) {
   const router = useRouter();
   
   const handleBack = () => {
@@ -78,6 +81,20 @@ export function ChatHeader({ chatId, chatName, chatType, online, lastSeen, parti
           </View>
         </View>
       </View>
+      
+      {/* AI Action Items Button */}
+      {onExtractActions && (
+        <TouchableOpacity onPress={onExtractActions} style={styles.actionButton} testID="action-items-button">
+          <Ionicons name="checkbox-outline" size={20} color="#007AFF" />
+        </TouchableOpacity>
+      )}
+      
+      {/* AI Summary Button */}
+      {onSummarize && (
+        <TouchableOpacity onPress={onSummarize} style={styles.summaryButton} testID="summary-button">
+          <Ionicons name="sparkles" size={20} color="#007AFF" />
+        </TouchableOpacity>
+      )}
       
       <TouchableOpacity onPress={handleInfo} style={styles.infoButton}>
         <Ionicons name="information-circle-outline" size={24} color="#007AFF" />
@@ -146,6 +163,14 @@ const styles = StyleSheet.create({
   },
   onlineText: {
     color: '#34C759', // iOS green for online status
+  },
+  actionButton: {
+    padding: 8,
+    marginRight: 4,
+  },
+  summaryButton: {
+    padding: 8,
+    marginRight: 4,
   },
   infoButton: {
     padding: 8,

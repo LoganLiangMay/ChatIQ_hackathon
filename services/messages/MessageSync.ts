@@ -4,7 +4,8 @@
  */
 
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { firestore, updateChatLastMessage } from '../firebase/firestore';
+import { updateChatLastMessage } from '../firebase/firestore';
+import { getFirebaseFirestore } from '../firebase/config';
 import { Message } from '@/types/message';
 import { db } from '../database/sqlite';
 
@@ -14,6 +15,9 @@ import { db } from '../database/sqlite';
  */
 export async function syncMessageToFirebase(message: Message): Promise<void> {
   try {
+    // Get Firestore instance
+    const firestore = await getFirebaseFirestore();
+    
     // 1. Write message to Firestore
     const messageRef = doc(firestore, `chats/${message.chatId}/messages`, message.id);
     

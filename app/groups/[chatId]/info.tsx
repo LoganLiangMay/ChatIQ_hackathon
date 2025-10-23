@@ -15,11 +15,11 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { groupService } from '@/services/groups/GroupService';
@@ -57,17 +57,43 @@ export default function GroupInfoScreen() {
     setLoading(true);
     
     try {
-      // Load chat from SQLite
-      const chatData = await db.getChat(chatId);
+      // Load participants with info (this now handles Firestore fallback internally)
+      const participantsData = await groupService.getParticipantsWithInfo(chatId);
+      setParticipants(participantsData);
+      
+      // Load chat from SQLite (or Firestore if needed)
+      let chatData = await db.getChat(chatId);
+      
+      // ✅ Fallback to Firestore if SQLite is empty (Expo Go)
+      if (!chatData) {
+        console.log('📱 SQLite empty, fetching group info from Firestore:', chatId);
+        const { getFirebaseFirestore } = await import('@/services/firebase/config');
+        const { doc, getDoc } = await import('firebase/firestore');
+        
+        const firestore = await getFirebaseFirestore();
+        const chatRef = doc(firestore, 'chats', chatId);
+        const chatDoc = await getDoc(chatRef);
+        
+        if (chatDoc.exists()) {
+          const data = chatDoc.data();
+          chatData = {
+            id: chatId,
+            name: data.name || 'Group',
+            type: 'group' as const,
+            participants: data.participants || [],
+            admins: data.admins || [],
+            participantDetails: data.participantDetails || {},
+            createdAt: data.createdAt?.toMillis?.() || Date.now(),
+            updatedAt: data.updatedAt?.toMillis?.() || Date.now(),
+          };
+        }
+      }
+      
       setChat(chatData);
       
       // Check if current user is admin
       const isAdmin = await groupService.isAdmin(chatId, user.uid);
       setIsCurrentUserAdmin(isAdmin);
-      
-      // Load participants with info
-      const participantsData = await groupService.getParticipantsWithInfo(chatId);
-      setParticipants(participantsData);
       
     } catch (error) {
       console.error('Error loading group info:', error);
@@ -185,7 +211,7 @@ export default function GroupInfoScreen() {
   
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007AFF" />
         </View>
@@ -195,7 +221,7 @@ export default function GroupInfoScreen() {
   
   if (!chat) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.loadingContainer}>
           <Text>Group not found</Text>
         </View>
@@ -204,7 +230,7 @@ export default function GroupInfoScreen() {
   }
   
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>

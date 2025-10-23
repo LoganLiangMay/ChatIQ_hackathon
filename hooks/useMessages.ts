@@ -9,11 +9,10 @@
 
 import { useState, useEffect } from 'react';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
-import { AppState } from 'react-native';
 import { getFirebaseFirestore } from '@/services/firebase/config';
 import { db } from '@/services/database/sqlite';
 import { messageService } from '@/services/messages/MessageService';
-import { notificationService } from '@/services/notifications/NotificationService';
+import { notificationManager } from '@/services/notifications/NotificationManager';
 import { Message } from '@/types/message';
 
 interface UseMessagesReturn {
@@ -52,21 +51,26 @@ export function useMessages(chatId: string, currentUserId: string): UseMessagesR
   useEffect(() => {
     if (!chatId || !currentUserId) return;
     
-    const messagesRef = collection(getFirebaseFirestore(), `chats/${chatId}/messages`);
-    const q = query(
-      messagesRef,
-      orderBy('timestamp', 'desc'),
-      limit(50)
-    );
+    let unsubscribe: (() => void) | undefined;
     
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      snapshot.docChanges().forEach(async (change) => {
-        if (change.type === 'added') {
-          const firestoreMessage = change.doc.data();
-          const messageId = change.doc.id;
-          
-          // Only process messages not sent by current user (to avoid duplicates from optimistic updates)
-          if (firestoreMessage.senderId !== currentUserId) {
+    const setupListener = async () => {
+      try {
+        console.log('🔵 [useMessages] Setting up Firestore listener for chat:', chatId);
+        const firestore = await getFirebaseFirestore();
+        console.log('✅ [useMessages] Firestore instance obtained');
+        
+        const messagesRef = collection(firestore, `chats/${chatId}/messages`);
+        const q = query(
+          messagesRef,
+          orderBy('timestamp', 'desc'),
+          limit(50)
+        );
+      
+        unsubscribe = onSnapshot(q, async (snapshot) => {
+          snapshot.docChanges().forEach(async (change) => {
+            const firestoreMessage = change.doc.data();
+            const messageId = change.doc.id;
+            
             const message: Message = {
               id: messageId,
               chatId,
@@ -79,57 +83,106 @@ export function useMessages(chatId: string, currentUserId: string): UseMessagesR
               syncStatus: 'synced',
               deliveryStatus: 'delivered',
               readBy: firestoreMessage.readBy || [],
-              deliveredTo: firestoreMessage.deliveredTo || []
+              deliveredTo: firestoreMessage.deliveredTo || [],
+              priority: firestoreMessage.priority || undefined // Include priority if it exists
             };
             
-            try {
-              // Save to SQLite
-              await db.insertOrUpdateMessage(message);
-              
-              // Mark as delivered immediately
-              await messageService.markAsDelivered(chatId, messageId, currentUserId);
-              
-              // Show notification if app is in background
-              const currentAppState = AppState.currentState;
-              if (currentAppState === 'background' || currentAppState === 'inactive') {
-                // Get chat info for notification
-                const chat = await db.getChat(chatId);
-                if (chat) {
-                  await notificationService.showMessageNotification(
+            if (change.type === 'added') {
+              try {
+                // Save to SQLite (no-op in Expo Go, but works in production)
+                await db.insertOrUpdateMessage(message);
+                
+                // Mark as delivered immediately (only for messages from others)
+                if (firestoreMessage.senderId !== currentUserId) {
+                  await messageService.markAsDelivered(chatId, messageId, currentUserId);
+                  
+                  // Trigger notification (manager handles foreground/background logic)
+                  await notificationManager.handleIncomingMessage(
                     chatId,
-                    chat.name || firestoreMessage.senderName,
                     firestoreMessage.senderName,
                     message.content || '📷 Image',
-                    chat.type === 'group'
+                    firestoreMessage.senderId,
+                    currentUserId
                   );
+                  
+                  // 🤖 AI: Priority detection now happens server-side automatically
+                  // when the message is created. No client-side detection needed!
                 }
-              }
-              
-              // Update UI state
-              setMessages(prev => {
-                // Check if message already exists
-                const exists = prev.some(m => m.id === messageId);
-                if (exists) return prev;
                 
-                // Add and sort by timestamp
-                return [...prev, message].sort((a, b) => a.timestamp - b.timestamp);
-              });
-              
-              console.log('✅ Received new message and marked as delivered:', messageId);
-              
-            } catch (error) {
-              console.error('Failed to process received message:', error);
+                // Update UI state (duplicate check by ID, but update delivery status if changed)
+                setMessages(prev => {
+                  // Check if message already exists
+                  const existingIndex = prev.findIndex(m => m.id === messageId);
+                  
+                  if (existingIndex !== -1) {
+                    // Message exists - update it (especially delivery status)
+                    const existingMessage = prev[existingIndex];
+                    
+                    // Only update if status actually changed
+                    if (existingMessage.deliveryStatus !== message.deliveryStatus || 
+                        existingMessage.syncStatus !== message.syncStatus) {
+                      console.log(`🔄 Updating message ${messageId}: ${existingMessage.deliveryStatus} → ${message.deliveryStatus}`);
+                      const updated = [...prev];
+                      updated[existingIndex] = { ...existingMessage, ...message };
+                      return updated;
+                    }
+                    
+                    console.log('Duplicate message detected, no changes:', messageId);
+                    return prev;
+                  }
+                  
+                  // New message - add and sort by timestamp
+                  const updated = [...prev, message].sort((a, b) => a.timestamp - b.timestamp);
+                  console.log('✅ Message added to UI:', messageId, 'from:', firestoreMessage.senderName);
+                  return updated;
+                });
+                
+              } catch (error) {
+                console.error('Failed to process received message:', error);
+              }
             }
-          }
-        }
-      });
-    }, (error) => {
-      console.error('Firestore listener error:', error);
-    });
+            
+            // ✅ NEW: Handle modified events for read receipts and delivery status
+            if (change.type === 'modified') {
+              try {
+                console.log(`🔄 Message modified (read receipts): ${messageId}`);
+                
+                // Update SQLite
+                await db.insertOrUpdateMessage(message);
+                
+                // Update UI state
+                setMessages(prev => {
+                  const existingIndex = prev.findIndex(m => m.id === messageId);
+                  
+                  if (existingIndex !== -1) {
+                    const updated = [...prev];
+                    updated[existingIndex] = { ...updated[existingIndex], ...message };
+                    console.log(`✅ Updated read receipt for ${messageId}: readBy=${message.readBy?.length}, deliveredTo=${message.deliveredTo?.length}`);
+                    return updated;
+                  }
+                  
+                  return prev;
+                });
+              } catch (error) {
+                console.error('Failed to process modified message:', error);
+              }
+            }
+          });
+        }, (error) => {
+          console.error('Firestore listener error:', error);
+        });
+      } catch (error) {
+        console.error('Error setting up Firestore listener in useMessages:', error);
+      }
+    };
+    
+    setupListener();
     
     return () => {
       console.log('Cleaning up Firestore listener for chat:', chatId);
-      unsubscribe();
+      if (unsubscribe) {
+        unsubscribe();
+      }
     };
   }, [chatId, currentUserId]);
   
@@ -177,9 +230,15 @@ export function useMessages(chatId: string, currentUserId: string): UseMessagesR
     try {
       await messageService.markAllMessagesAsRead(chatId, currentUserId);
       
-      // Refresh messages from SQLite to show updated read status
+      // Only refresh from SQLite if available (not in Expo Go)
+      // Otherwise, keep current state (messages come from Firestore real-time)
       const updatedMessages = await db.getMessages(chatId, 50);
-      setMessages(updatedMessages.reverse());
+      if (updatedMessages.length > 0) {
+        setMessages(updatedMessages.reverse());
+        console.log('✅ Refreshed messages from SQLite:', updatedMessages.length);
+      } else {
+        console.log('✅ SQLite empty (Expo Go), keeping Firestore real-time messages');
+      }
       
       console.log('✅ All messages marked as read in chat:', chatId);
     } catch (error) {

@@ -7,8 +7,7 @@
  * - Updating group info
  */
 
-import { v4 as uuidv4 } from 'uuid';
-import { getAuth } from 'firebase/auth';
+import { generateUUID } from '@/utils/uuid';
 import { 
   doc, 
   setDoc, 
@@ -18,7 +17,7 @@ import {
   serverTimestamp,
   getDoc 
 } from 'firebase/firestore';
-import { firestore } from '@/services/firebase/firestore';
+import { getFirebaseAuth, getFirebaseFirestore } from '@/services/firebase/config';
 import { db } from '@/services/database/sqlite';
 import { Chat } from '@/types/chat';
 
@@ -31,7 +30,7 @@ class GroupService {
     participantIds: string[],
     groupPicture?: string
   ): Promise<string> {
-    const auth = getAuth();
+    const auth = await getFirebaseAuth();
     const currentUser = auth.currentUser;
     
     if (!currentUser) {
@@ -48,7 +47,7 @@ class GroupService {
       throw new Error('Group must have at least 2 participants');
     }
     
-    const chatId = uuidv4();
+    const chatId = generateUUID();
     
     const groupData: Chat = {
       id: chatId,
@@ -62,6 +61,8 @@ class GroupService {
     };
     
     try {
+      const firestore = await getFirebaseFirestore();
+      
       // Create in Firestore
       const chatRef = doc(firestore, 'chats', chatId);
       await setDoc(chatRef, {
@@ -89,7 +90,7 @@ class GroupService {
     chatId: string,
     userIds: string[]
   ): Promise<void> {
-    const auth = getAuth();
+    const auth = await getFirebaseAuth();
     const currentUser = auth.currentUser;
     
     if (!currentUser) {
@@ -102,6 +103,8 @@ class GroupService {
       if (!isAdmin) {
         throw new Error('Only admins can add participants');
       }
+      
+      const firestore = await getFirebaseFirestore();
       
       // Update Firestore
       const chatRef = doc(firestore, 'chats', chatId);
@@ -136,7 +139,7 @@ class GroupService {
     chatId: string,
     userId: string
   ): Promise<void> {
-    const auth = getAuth();
+    const auth = await getFirebaseAuth();
     const currentUser = auth.currentUser;
     
     if (!currentUser) {
@@ -149,6 +152,8 @@ class GroupService {
       if (!isAdmin && userId !== currentUser.uid) {
         throw new Error('Only admins can remove participants');
       }
+      
+      const firestore = await getFirebaseFirestore();
       
       // Update Firestore
       const chatRef = doc(firestore, 'chats', chatId);
@@ -186,7 +191,7 @@ class GroupService {
     chatId: string,
     userId: string
   ): Promise<void> {
-    const auth = getAuth();
+    const auth = await getFirebaseAuth();
     const currentUser = auth.currentUser;
     
     if (!currentUser) {
@@ -199,6 +204,8 @@ class GroupService {
       if (!isAdmin) {
         throw new Error('Only admins can promote users');
       }
+      
+      const firestore = await getFirebaseFirestore();
       
       // Update Firestore
       const chatRef = doc(firestore, 'chats', chatId);
@@ -233,7 +240,7 @@ class GroupService {
     chatId: string,
     userId: string
   ): Promise<void> {
-    const auth = getAuth();
+    const auth = await getFirebaseAuth();
     const currentUser = auth.currentUser;
     
     if (!currentUser) {
@@ -252,6 +259,8 @@ class GroupService {
       if (chat && chat.admins && chat.admins.length === 1 && chat.admins[0] === userId) {
         throw new Error('Cannot demote the last admin');
       }
+      
+      const firestore = await getFirebaseFirestore();
       
       // Update Firestore
       const chatRef = doc(firestore, 'chats', chatId);
@@ -285,7 +294,7 @@ class GroupService {
     chatId: string,
     name: string
   ): Promise<void> {
-    const auth = getAuth();
+    const auth = await getFirebaseAuth();
     const currentUser = auth.currentUser;
     
     if (!currentUser) {
@@ -298,6 +307,8 @@ class GroupService {
       if (!isAdmin) {
         throw new Error('Only admins can update group name');
       }
+      
+      const firestore = await getFirebaseFirestore();
       
       // Update Firestore
       const chatRef = doc(firestore, 'chats', chatId);
@@ -331,7 +342,7 @@ class GroupService {
     chatId: string,
     groupPicture: string
   ): Promise<void> {
-    const auth = getAuth();
+    const auth = await getFirebaseAuth();
     const currentUser = auth.currentUser;
     
     if (!currentUser) {
@@ -344,6 +355,8 @@ class GroupService {
       if (!isAdmin) {
         throw new Error('Only admins can update group picture');
       }
+      
+      const firestore = await getFirebaseFirestore();
       
       // Update Firestore
       const chatRef = doc(firestore, 'chats', chatId);
@@ -374,7 +387,7 @@ class GroupService {
    * Leave a group
    */
   async leaveGroup(chatId: string): Promise<void> {
-    const auth = getAuth();
+    const auth = await getFirebaseAuth();
     const currentUser = auth.currentUser;
     
     if (!currentUser) {
@@ -403,6 +416,7 @@ class GroupService {
       }
       
       // Fallback to Firestore
+      const firestore = await getFirebaseFirestore();
       const chatRef = doc(firestore, 'chats', chatId);
       const chatDoc = await getDoc(chatRef);
       
@@ -424,10 +438,34 @@ class GroupService {
    */
   async getParticipantsWithInfo(chatId: string): Promise<any[]> {
     try {
-      const chat = await db.getChat(chatId);
+      // Try SQLite first
+      let chat = await db.getChat(chatId);
+      
+      // ✅ Fallback to Firestore if SQLite is empty (Expo Go)
       if (!chat) {
-        throw new Error('Chat not found');
+        console.log('📱 SQLite empty, fetching group chat from Firestore:', chatId);
+        const firestore = await getFirebaseFirestore();
+        const chatRef = doc(firestore, 'chats', chatId);
+        const chatDoc = await getDoc(chatRef);
+        
+        if (chatDoc.exists()) {
+          const data = chatDoc.data();
+          chat = {
+            id: chatId,
+            name: data.name || 'Group',
+            type: 'group' as const,
+            participants: data.participants || [],
+            admins: data.admins || [],
+            participantDetails: data.participantDetails || {}, // ✅ FIXED: Use participantDetails
+            createdAt: data.createdAt?.toMillis?.() || Date.now(),
+            updatedAt: data.updatedAt?.toMillis?.() || Date.now(),
+          };
+        } else {
+          throw new Error('Chat not found in Firestore');
+        }
       }
+      
+      const firestore = await getFirebaseFirestore();
       
       // Fetch user info for each participant
       const participantsWithInfo = await Promise.all(
@@ -473,7 +511,4 @@ class GroupService {
 }
 
 export const groupService = new GroupService();
-
-
-
 

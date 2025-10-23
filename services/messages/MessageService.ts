@@ -3,11 +3,11 @@
  * Handles sending text messages, image messages, and coordinating between SQLite and Firebase
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import { getAuth } from 'firebase/auth';
 import { db } from '../database/sqlite';
 import { messageQueue } from './MessageQueue';
 import { Message } from '@/types/message';
+import { generateUUID } from '@/utils/uuid';
 
 class MessageService {
   /**
@@ -26,7 +26,7 @@ class MessageService {
     
     // Create message object
     const message: Message = {
-      id: uuidv4(),
+      id: generateUUID(),
       chatId,
       senderId: currentUser.uid,
       senderName: currentUser.displayName || 'Unknown',
@@ -69,7 +69,7 @@ class MessageService {
     }
     
     const message: Message = {
-      id: uuidv4(),
+      id: generateUUID(),
       chatId,
       senderId: currentUser.uid,
       senderName: currentUser.displayName || 'Unknown',
@@ -165,23 +165,47 @@ class MessageService {
       // Update SQLite first (returns list of updated message IDs)
       const updatedMessageIds = await db.markAllMessagesAsRead(chatId, userId);
       
-      if (updatedMessageIds.length === 0) {
-        console.log('No unread messages to mark as read in chat:', chatId);
+      if (updatedMessageIds.length > 0) {
+        console.log(`✅ Marked ${updatedMessageIds.length} messages as read in SQLite`);
+      }
+      
+      // ✅ ALWAYS update Firestore, even if SQLite is empty (Expo Go)
+      // Get messages from Firestore to mark as read
+      const { getFirebaseFirestore } = await import('../firebase/config');
+      const { collection, query, where, getDocs } = await import('firebase/firestore');
+      const { markMessageAsRead: firestoreMarkRead } = await import('../firebase/firestore');
+      
+      const firestore = await getFirebaseFirestore();
+      const messagesRef = collection(firestore, `chats/${chatId}/messages`);
+      const q = query(messagesRef, where('senderId', '!=', userId));
+      const snapshot = await getDocs(q);
+      
+      const messagesToMarkAsRead: string[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        const readBy = data.readBy || [];
+        
+        // Only mark if user hasn't read it yet
+        if (!readBy.includes(userId)) {
+          messagesToMarkAsRead.push(doc.id);
+        }
+      });
+      
+      if (messagesToMarkAsRead.length === 0) {
+        console.log('No unread messages to mark as read in Firestore:', chatId);
         return;
       }
       
-      console.log(`✅ Marked ${updatedMessageIds.length} messages as read in SQLite`);
+      console.log(`📝 Marking ${messagesToMarkAsRead.length} messages as read in Firestore`);
       
-      // Update Firestore for each message (non-blocking)
-      const { markMessageAsRead: firestoreMarkRead } = await import('../firebase/firestore');
-      Promise.all(
-        updatedMessageIds.map(messageId => 
+      // Update Firestore for each message
+      await Promise.all(
+        messagesToMarkAsRead.map(messageId => 
           firestoreMarkRead(chatId, messageId, userId)
         )
-      ).catch((error) => {
-        console.error('Failed to mark messages as read in Firestore:', error);
-        // Don't throw - SQLite updates succeeded, which is most important
-      });
+      );
+      
+      console.log(`✅ Marked ${messagesToMarkAsRead.length} messages as read in Firestore`);
     } catch (error) {
       console.error('Failed to mark all messages as read:', error);
       throw error;

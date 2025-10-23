@@ -1,180 +1,217 @@
 /**
- * CreateGroupScreen
- * Allows user to create a new group chat by:
- * 1. Entering group name
- * 2. Selecting participants
- * 3. Creating the group
+ * Group Chat Creation - User Selection Screen
+ * Allows user to select multiple participants from registered users
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  TextInput,
   SafeAreaView,
-  Alert,
   ActivityIndicator,
-  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { groupService } from '@/services/groups/GroupService';
+import { collection, getDocs } from 'firebase/firestore';
+import { getFirebaseFirestore } from '@/services/firebase/config';
 import { useAuth } from '@/contexts/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
+
+interface User {
+  uid: string;
+  displayName: string;
+  email: string;
+  profilePicture?: string | null;
+  online: boolean;
+}
 
 export default function CreateGroupScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const [groupName, setGroupName] = useState('');
+  const [users, setUsers] = useState<User[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
-  const [creating, setCreating] = useState(false);
-  
-  // Placeholder user IDs for testing
-  // In a real app, you'd fetch users from Firestore and show a searchable list
-  const availableUsers = [
-    { uid: 'user2', displayName: 'Alice Johnson' },
-    { uid: 'user3', displayName: 'Bob Smith' },
-    { uid: 'user4', displayName: 'Carol Davis' },
-  ];
-  
-  const handleToggleUser = (userId: string) => {
-    if (selectedUsers.includes(userId)) {
-      setSelectedUsers(selectedUsers.filter(id => id !== userId));
-    } else {
-      setSelectedUsers([...selectedUsers, userId]);
-    }
-  };
-  
-  const handleCreate = async () => {
-    if (!groupName.trim()) {
-      Alert.alert('Error', 'Please enter a group name');
-      return;
-    }
-    
-    if (selectedUsers.length === 0) {
-      Alert.alert('Error', 'Please select at least one participant');
-      return;
-    }
-    
-    setCreating(true);
-    
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const loadUsers = async () => {
     try {
-      const chatId = await groupService.createGroup(
-        groupName.trim(),
-        selectedUsers
-      );
-      
-      Alert.alert('Success', 'Group created successfully!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            router.replace(`/(tabs)/chats/${chatId}`);
-          },
-        },
-      ]);
-      
+      const firestore = await getFirebaseFirestore();
+      const usersRef = collection(firestore, 'users');
+      const snapshot = await getDocs(usersRef);
+
+      const allUsers = snapshot.docs
+        .map(doc => ({
+          uid: doc.id,
+          displayName: doc.data().displayName || 'Unknown User',
+          email: doc.data().email || '',
+          profilePicture: doc.data().profilePicture || null,
+          online: doc.data().online || false,
+        }))
+        .filter(u => u.uid !== user?.uid) // Exclude current user
+        .sort((a, b) => a.displayName.localeCompare(b.displayName)); // Sort alphabetically
+
+      setUsers(allUsers);
+      console.log('✅ Loaded', allUsers.length, 'users from database');
     } catch (error) {
-      console.error('Failed to create group:', error);
-      Alert.alert('Error', 'Failed to create group. Please try again.');
+      console.error('Failed to load users:', error);
     } finally {
-      setCreating(false);
+      setLoading(false);
     }
   };
-  
+
+  const toggleUser = (userId: string) => {
+    setSelectedUsers(prev =>
+      prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
+  const handleNext = () => {
+    if (selectedUsers.length >= 2) {
+      // Navigate to group name screen with selected user IDs
+      router.push({
+        pathname: '/groups/name',
+        params: { userIds: selectedUsers.join(',') },
+      });
+    }
+  };
+
+  const filteredUsers = users.filter(
+    user =>
+      user.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const renderUser = ({ item }: { item: User }) => {
+    const isSelected = selectedUsers.includes(item.uid);
+
+    return (
+      <TouchableOpacity
+        style={styles.userItem}
+        onPress={() => toggleUser(item.uid)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.userAvatar}>
+          <Text style={styles.userAvatarText}>
+            {item.displayName.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+
+        <View style={styles.userInfo}>
+          <Text style={styles.userName}>{item.displayName}</Text>
+          <Text style={styles.userEmail}>{item.email}</Text>
+        </View>
+
+        <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+          {isSelected && (
+            <Ionicons name="checkmark" size={18} color="#FFF" />
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.cancelButton}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>New Group</Text>
+            <View style={styles.placeholderButton} />
+          </View>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#007AFF" />
+            <Text style={styles.loadingText}>Loading users...</Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="close" size={28} color="#007AFF" />
+          <TouchableOpacity onPress={() => router.back()} style={styles.cancelButton}>
+            <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
-          
           <Text style={styles.headerTitle}>New Group</Text>
-          
           <TouchableOpacity
-            onPress={handleCreate}
-            disabled={creating || !groupName.trim() || selectedUsers.length === 0}
-            style={styles.createButton}
+            onPress={handleNext}
+            style={styles.nextButton}
+            disabled={selectedUsers.length < 2}
           >
-            {creating ? (
-              <ActivityIndicator size="small" color="#007AFF" />
-            ) : (
-              <Text
-                style={[
-                  styles.createButtonText,
-                  (!groupName.trim() || selectedUsers.length === 0) && styles.createButtonTextDisabled,
-                ]}
-              >
-                Create
-              </Text>
-            )}
+            <Text
+              style={[
+                styles.nextText,
+                selectedUsers.length < 2 && styles.nextTextDisabled,
+              ]}
+            >
+              Next
+            </Text>
           </TouchableOpacity>
         </View>
-        
-        <ScrollView style={styles.content}>
-          {/* Group Name Input */}
-          <View style={styles.section}>
-            <View style={styles.groupIconContainer}>
-              <View style={styles.groupIcon}>
-                <Ionicons name="people" size={32} color="#FFF" />
-              </View>
-            </View>
-            
-            <TextInput
-              style={styles.groupNameInput}
-              placeholder="Group name"
-              placeholderTextColor="#999"
-              value={groupName}
-              onChangeText={setGroupName}
-              maxLength={50}
-              autoFocus
-            />
-          </View>
-          
-          {/* Participant Selection */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              Add Participants ({selectedUsers.length})
+
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color="#8E8E93" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search users..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#8E8E93"
+          />
+        </View>
+
+        {/* Selected Count */}
+        {selectedUsers.length > 0 && (
+          <View style={styles.selectedBanner}>
+            <Text style={styles.selectedText}>
+              {selectedUsers.length} participant{selectedUsers.length > 1 ? 's' : ''} selected
             </Text>
-            
-            {availableUsers.map((user) => {
-              const isSelected = selectedUsers.includes(user.uid);
-              
-              return (
-                <TouchableOpacity
-                  key={user.uid}
-                  style={styles.userItem}
-                  onPress={() => handleToggleUser(user.uid)}
-                >
-                  <View style={styles.userAvatar}>
-                    <Text style={styles.userAvatarText}>
-                      {user.displayName.charAt(0)}
-                    </Text>
-                  </View>
-                  
-                  <Text style={styles.userName}>{user.displayName}</Text>
-                  
-                  <View
-                    style={[
-                      styles.checkbox,
-                      isSelected && styles.checkboxSelected,
-                    ]}
-                  >
-                    {isSelected && (
-                      <Ionicons name="checkmark" size={18} color="#FFF" />
-                    )}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-            
-            {availableUsers.length === 0 && (
-              <Text style={styles.emptyText}>No users available</Text>
-            )}
           </View>
-        </ScrollView>
+        )}
+
+        {/* User List */}
+        <FlatList
+          data={filteredUsers}
+          keyExtractor={item => item.uid}
+          renderItem={renderUser}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="people-outline" size={64} color="#CCC" />
+              <Text style={styles.emptyText}>No users found</Text>
+              <Text style={styles.emptySubtext}>
+                {searchQuery
+                  ? 'Try a different search term'
+                  : 'Add more users to create a group chat'}
+              </Text>
+            </View>
+          }
+        />
+
+        {/* Bottom Hint */}
+        {selectedUsers.length < 2 && users.length > 0 && (
+          <View style={styles.hintContainer}>
+            <Text style={styles.hintText}>
+              Select at least 2 participants to create a group
+            </Text>
+          </View>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -187,102 +224,115 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+    backgroundColor: '#FFF',
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5EA',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#C6C6C8',
   },
-  backButton: {
-    padding: 4,
+  cancelButton: {
+    paddingVertical: 8,
+  },
+  cancelText: {
+    fontSize: 17,
+    color: '#007AFF',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
     color: '#000',
   },
-  createButton: {
-    padding: 4,
+  nextButton: {
+    paddingVertical: 8,
   },
-  createButtonText: {
-    fontSize: 16,
+  nextText: {
+    fontSize: 17,
     fontWeight: '600',
     color: '#007AFF',
   },
-  createButtonTextDisabled: {
-    color: '#CCC',
+  nextTextDisabled: {
+    color: '#C7C7CC',
   },
-  content: {
+  placeholderButton: {
+    width: 60,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F7',
+    margin: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
     flex: 1,
-  },
-  section: {
-    paddingVertical: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5EA',
-  },
-  groupIconContainer: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  groupIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#007AFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  groupNameInput: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 17,
     color: '#000',
-    textAlign: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
   },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
+  selectedBanner: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 8,
     paddingHorizontal: 16,
-    marginBottom: 8,
-    textTransform: 'uppercase',
+    alignItems: 'center',
+  },
+  selectedText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  listContent: {
+    flexGrow: 1,
   },
   userItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E5E5EA',
   },
   userAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#007AFF',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
   userAvatarText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
     color: '#FFF',
   },
-  userName: {
+  userInfo: {
     flex: 1,
-    fontSize: 16,
+  },
+  userName: {
+    fontSize: 17,
+    fontWeight: '500',
     color: '#000',
+    marginBottom: 2,
+  },
+  userEmail: {
+    fontSize: 14,
+    color: '#8E8E93',
   },
   checkbox: {
     width: 24,
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#CCC',
+    borderColor: '#C7C7CC',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -290,14 +340,44 @@ const styles = StyleSheet.create({
     backgroundColor: '#007AFF',
     borderColor: '#007AFF',
   },
-  emptyText: {
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
     fontSize: 16,
+    color: '#666',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+    marginTop: 60,
+  },
+  emptyText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#666',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 15,
     color: '#999',
     textAlign: 'center',
-    paddingVertical: 40,
+  },
+  hintContainer: {
+    padding: 16,
+    backgroundColor: '#F2F2F7',
+    borderTopWidth: 0.5,
+    borderTopColor: '#C6C6C8',
+  },
+  hintText: {
+    fontSize: 14,
+    color: '#8E8E93',
+    textAlign: 'center',
   },
 });
-
-
-
-

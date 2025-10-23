@@ -7,7 +7,8 @@
  */
 
 import { useState, useCallback } from 'react';
-import { View, StyleSheet, SafeAreaView, Alert } from 'react-native';
+import { View, StyleSheet, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { searchService, SearchResult, UserSearchResult } from '@/services/search/SearchService';
@@ -83,10 +84,10 @@ export default function SearchScreen() {
               text: 'Start Chat',
               onPress: async () => {
                 try {
-                  await createDirectChat([user.uid, selectedUser.uid]);
+                  const newChatId = await createDirectChat([user.uid, selectedUser.uid]);
                   
                   // Navigate to new chat
-                  router.push(`/(tabs)/chats/${chatId}`);
+                  router.push(`/(tabs)/chats/${newChatId}`);
                 } catch (error) {
                   console.error('Error creating chat:', error);
                   Alert.alert('Error', 'Failed to create chat. Please try again.');
@@ -107,7 +108,7 @@ export default function SearchScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
         {/* Search bar */}
         <SearchBar

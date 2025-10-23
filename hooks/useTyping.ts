@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { doc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
-import { firestore } from '@/services/firebase/firestore';
+import { getFirebaseFirestore, getFirebaseFirestoreSync } from '@/services/firebase/config';
 
 interface TypingUser {
   userId: string;
@@ -33,40 +33,58 @@ export function useTyping(chatId: string, currentUserId: string, currentUserName
   useEffect(() => {
     if (!chatId) return;
     
-    const chatRef = doc(firestore, 'chats', chatId);
+    let unsubscribe: (() => void) | undefined;
     
-    const unsubscribe = onSnapshot(
-      chatRef,
-      (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-          const typingData = data.typing || {};
-          
-          const now = Date.now();
-          const activeTypers: string[] = [];
-          
-          // Filter out stale typing indicators and current user
-          Object.entries(typingData).forEach(([userId, userData]: [string, any]) => {
-            if (userId === currentUserId) return; // Don't show own typing
-            
-            const timestamp = userData.timestamp?.toMillis?.() || userData.timestamp || 0;
-            const isRecent = (now - timestamp) < TYPING_TIMEOUT;
-            
-            if (isRecent) {
-              activeTypers.push(userData.userName || 'Someone');
+    const setupListener = async () => {
+      try {
+        console.log('🔵 [useTyping] Setting up listener for chat:', chatId);
+        const firestore = await getFirebaseFirestore();
+        console.log('✅ [useTyping] Firestore instance obtained');
+        
+        const chatRef = doc(firestore, 'chats', chatId);
+        
+        unsubscribe = onSnapshot(
+          chatRef,
+          (snapshot) => {
+            if (snapshot.exists()) {
+              const data = snapshot.data();
+              const typingData = data.typing || {};
+              
+              const now = Date.now();
+              const activeTypers: string[] = [];
+              
+              // Filter out stale typing indicators and current user
+              Object.entries(typingData).forEach(([userId, userData]: [string, any]) => {
+                if (userId === currentUserId) return; // Don't show own typing
+                if (!userData) return; // Skip null entries (user stopped typing)
+                
+                const timestamp = userData.timestamp?.toMillis?.() || userData.timestamp || 0;
+                const isRecent = (now - timestamp) < TYPING_TIMEOUT;
+                
+                if (isRecent) {
+                  activeTypers.push(userData.userName || 'Someone');
+                }
+              });
+              
+              setTypingUsers(activeTypers);
             }
-          });
-          
-          setTypingUsers(activeTypers);
-        }
-      },
-      (error) => {
-        console.error('Error listening to typing status:', error);
+          },
+          (error) => {
+            console.error('Error listening to typing status:', error);
+          }
+        );
+      } catch (error) {
+        console.error('Error setting up typing listener:', error);
       }
-    );
+    };
+    
+    setupListener();
     
     return () => {
-      unsubscribe();
+      console.log('Cleaning up typing listener');
+      if (unsubscribe) {
+        unsubscribe();
+      }
     };
   }, [chatId, currentUserId]);
   
@@ -75,6 +93,8 @@ export function useTyping(chatId: string, currentUserId: string, currentUserName
     if (!chatId || !currentUserId) return;
     
     try {
+      // Use sync version - Firestore should be initialized by now
+      const firestore = getFirebaseFirestoreSync();
       const chatRef = doc(firestore, 'chats', chatId);
       
       if (isTyping) {

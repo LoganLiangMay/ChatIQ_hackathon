@@ -7,6 +7,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ChatListItem as ChatListItemType } from '@/types/chat';
 import { formatTimestamp, getInitials, truncate } from '@/utils/formatters';
+import { PriorityBadge } from '@/components/ai/PriorityBadge';
 
 interface ChatListItemProps {
   chat: ChatListItemType;
@@ -49,7 +50,13 @@ export function ChatListItem({ chat }: ChatListItemProps) {
     >
       {/* Avatar */}
       <View style={styles.avatarContainer}>
-        <View style={styles.avatar}>
+        <View style={[
+          styles.avatar,
+          // 🤖 AI: Red border for urgent chats
+          chat.lastMessage?.priority?.isPriority && 
+          chat.lastMessage.priority.score >= 0.6 && 
+          styles.avatarUrgent
+        ]}>
           <Text style={styles.avatarText}>{getAvatar()}</Text>
         </View>
         
@@ -66,11 +73,22 @@ export function ChatListItem({ chat }: ChatListItemProps) {
             {getDisplayName()}
           </Text>
           
-          {chat.lastMessage && (
-            <Text style={styles.time}>
-              {formatTimestamp(chat.lastMessage.timestamp)}
-            </Text>
-          )}
+          <View style={styles.headerRight}>
+            {/* 🤖 AI: Priority indicator (compact) */}
+            {chat.lastMessage?.priority?.isPriority && (
+              <PriorityBadge
+                urgencyLevel={chat.lastMessage.priority.urgencyLevel}
+                score={chat.lastMessage.priority.score}
+                compact={true}
+              />
+            )}
+            
+            {chat.lastMessage && (
+              <Text style={styles.time}>
+                {formatTimestamp(chat.lastMessage.timestamp)}
+              </Text>
+            )}
+          </View>
         </View>
         
         <View style={styles.footer}>
@@ -110,6 +128,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  avatarUrgent: {
+    borderWidth: 3,
+    borderColor: '#FF3B30', // Red border for urgent chats
+  },
   avatarText: {
     fontSize: 20,
     fontWeight: '600',
@@ -135,6 +157,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   name: {
     flex: 1,

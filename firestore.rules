@@ -65,6 +65,21 @@ service cloud.firestore {
         allow delete: if false;
       }
     }
+    
+    // Action Items collection
+    match /actionItems/{itemId} {
+      // Can read if user owns the action item
+      allow read: if isOwner(resource.data.userId);
+      
+      // Can create if user is creating for themselves
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      
+      // Can update if user owns the action item
+      allow update: if isOwner(resource.data.userId);
+      
+      // Can delete if user owns the action item
+      allow delete: if isOwner(resource.data.userId);
+    }
   }
 }
 

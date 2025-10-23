@@ -1,0 +1,28 @@
+{
+  "name": "messageai-lambda-functions",
+  "version": "1.0.0",
+  "description": "AWS Lambda functions for MessageAI heavy AI processing",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "package": "npm run build && cd dist && zip -r ../function.zip .",
+    "deploy:search": "npm run package && aws lambda update-function-code --function-name MessageAI-Search --zip-file fileb://function.zip",
+    "deploy:knowledge": "npm run package && aws lambda update-function-code --function-name MessageAI-KnowledgeBuilder --zip-file fileb://function.zip",
+    "deploy:assistant": "npm run package && aws lambda update-function-code --function-name MessageAI-Assistant --zip-file fileb://function.zip"
+  },
+  "keywords": ["aws", "lambda", "ai", "openai", "pinecone"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "openai": "^4.28.0",
+    "@pinecone-database/pinecone": "^2.0.0",
+    "firebase-admin": "^12.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/aws-lambda": "^8.10.133",
+    "typescript": "^5.3.3"
+  }
+}
+
+

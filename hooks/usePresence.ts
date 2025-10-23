@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { firestore } from '@/services/firebase/firestore';
+import { getFirebaseFirestore } from '@/services/firebase/config';
 
 interface PresenceData {
   online: boolean;
@@ -24,35 +24,53 @@ export function usePresence(userId: string | undefined): PresenceData {
       return;
     }
     
-    const userRef = doc(firestore, 'users', userId);
+    let unsubscribe: (() => void) | undefined;
     
-    const unsubscribe = onSnapshot(
-      userRef,
-      (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-          setOnline(data.online || false);
-          
-          // Handle Firestore Timestamp
-          const lastSeenValue = data.lastSeen;
-          if (lastSeenValue?.toMillis) {
-            setLastSeen(lastSeenValue.toMillis());
-          } else if (typeof lastSeenValue === 'number') {
-            setLastSeen(lastSeenValue);
-          } else {
-            setLastSeen(0);
+    const setupListener = async () => {
+      try {
+        console.log('🔵 [usePresence] Setting up listener for user:', userId);
+        const firestore = await getFirebaseFirestore();
+        console.log('✅ [usePresence] Firestore instance obtained');
+        
+        const userRef = doc(firestore, 'users', userId);
+        
+        unsubscribe = onSnapshot(
+          userRef,
+          (snapshot) => {
+            if (snapshot.exists()) {
+              const data = snapshot.data();
+              setOnline(data.online || false);
+              
+              // Handle Firestore Timestamp
+              const lastSeenValue = data.lastSeen;
+              if (lastSeenValue?.toMillis) {
+                setLastSeen(lastSeenValue.toMillis());
+              } else if (typeof lastSeenValue === 'number') {
+                setLastSeen(lastSeenValue);
+              } else {
+                setLastSeen(0);
+              }
+            }
+            setLoading(false);
+          },
+          (error) => {
+            console.error('Error listening to user presence:', error);
+            setLoading(false);
           }
-        }
-        setLoading(false);
-      },
-      (error) => {
-        console.error('Error listening to user presence:', error);
+        );
+      } catch (error) {
+        console.error('Error setting up presence listener:', error);
         setLoading(false);
       }
-    );
+    };
+    
+    setupListener();
     
     return () => {
-      unsubscribe();
+      console.log('Cleaning up presence listener');
+      if (unsubscribe) {
+        unsubscribe();
+      }
     };
   }, [userId]);
   
