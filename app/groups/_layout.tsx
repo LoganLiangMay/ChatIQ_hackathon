@@ -5,6 +5,9 @@ export default function GroupsLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
+        gestureEnabled: true,
+        fullScreenGestureEnabled: false, // Only edge detection
+        gestureResponseDistance: 35, // Small edge area (35px) like iMessage
         animation: 'slide_from_right',
       }}
     >

@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, SectionList, TouchableOpacity, ActivityIndicator, Alert, Platform, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, SectionList, TouchableOpacity, ActivityIndicator, Alert, Platform, StatusBar, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -6,12 +6,28 @@ import { useChats } from '@/hooks/useChats';
 import { ChatListItem } from '@/components/chat/ChatListItem';
 import { NetworkStatus } from '@/components/ui/NetworkStatus';
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
+import { SearchBar } from '@/components/search/SearchBar';
+import { SearchResults } from '@/components/search/SearchResults';
+import { SearchFilters } from '@/components/search/SearchFilters';
+import { searchService, SearchResult, SearchFilters as SearchFiltersType } from '@/services/search/SearchService';
 
 export default function ChatsScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { chats, loading, refreshChats } = useChats(user?.uid || '');
+  
+  // Search state
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult>({
+    messages: [],
+    chats: [],
+    users: [],
+  });
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [filters, setFilters] = useState<SearchFiltersType>({});
+  const [showFilters, setShowFilters] = useState(false);
   
   // 🚨 Separate urgent chats from regular chats
   const chatSections = useMemo(() => {
@@ -66,9 +82,58 @@ export default function ChatsScreen() {
     );
   };
   
-  const handleSearch = () => {
-    router.push('/(tabs)/chats/search');
+  const handleSearchPress = () => {
+    setShowSearch(true);
   };
+  
+  const handleSearchClose = () => {
+    setShowSearch(false);
+    setSearchQuery('');
+    setSearchResults({
+      messages: [],
+      chats: [],
+      users: [],
+    });
+    setFilters({});
+    setShowFilters(false);
+  };
+  
+  const handleSearch = useCallback(async (query: string) => {
+    setSearchQuery(query);
+
+    if (!user || !query || query.trim().length < 2) {
+      setSearchResults({
+        messages: [],
+        chats: [],
+        users: [],
+      });
+      setSearchLoading(false);
+      return;
+    }
+
+    setSearchLoading(true);
+
+    try {
+      const results = await searchService.searchAll(query, user.uid, filters, true);
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Search error:', error);
+      setSearchResults({
+        messages: [],
+        chats: [],
+        users: [],
+      });
+    } finally {
+      setSearchLoading(false);
+    }
+  }, [user, filters]);
+
+  const handleFiltersChange = useCallback((newFilters: SearchFiltersType) => {
+    setFilters(newFilters);
+    if (searchQuery && searchQuery.trim().length >= 2) {
+      handleSearch(searchQuery);
+    }
+  }, [searchQuery, handleSearch]);
   
   if (loading) {
       return (
@@ -103,13 +168,28 @@ export default function ChatsScreen() {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Chats</Text>
           <View style={styles.headerButtons}>
-            <TouchableOpacity onPress={handleSearch} style={styles.searchButton}>
+            <TouchableOpacity onPress={handleSearchPress} style={styles.searchButton}>
               <Ionicons name="search-outline" size={24} color="#007AFF" />
             </TouchableOpacity>
             <TouchableOpacity onPress={handleNewChat} style={styles.newChatButton}>
               <Ionicons name="create-outline" size={24} color="#007AFF" />
             </TouchableOpacity>
           </View>
+        </View>
+        
+        {/* Smart Search Bar */}
+        <View style={styles.searchBarContainer}>
+          <TouchableOpacity 
+            style={styles.searchBarTouchable}
+            onPress={handleSearchPress}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="search" size={20} color="#8E8E93" />
+            <Text style={styles.searchBarPlaceholder}>
+              Search by meaning...
+            </Text>
+            <Ionicons name="sparkles" size={16} color="#007AFF" />
+          </TouchableOpacity>
         </View>
         
         {/* Chat List with Urgent Section */}
@@ -149,6 +229,66 @@ export default function ChatsScreen() {
           />
         )}
       </View>
+      
+      {/* Search Modal */}
+      <Modal
+        visible={showSearch}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={handleSearchClose}
+      >
+        <SafeAreaView style={styles.searchModalContainer}>
+          {/* Search Header */}
+          <View style={styles.searchHeader}>
+            <TouchableOpacity onPress={handleSearchClose} style={styles.closeButton}>
+              <Ionicons name="close" size={28} color="#007AFF" />
+            </TouchableOpacity>
+            
+            <View style={styles.searchInputContainer}>
+              <SearchBar
+                placeholder="Search by meaning..."
+                onSearch={handleSearch}
+                debounceMs={500}
+                autoFocus={true}
+              />
+            </View>
+
+            <TouchableOpacity 
+              onPress={() => setShowFilters(!showFilters)} 
+              style={styles.filterButton}
+            >
+              <Ionicons 
+                name={showFilters ? 'funnel' : 'funnel-outline'} 
+                size={24} 
+                color={Object.keys(filters).length > 0 ? '#007AFF' : '#666'}
+              />
+            </TouchableOpacity>
+          </View>
+
+          {/* AI Search Badge */}
+          {searchQuery && (
+            <View style={styles.aiSearchBadge}>
+              <Ionicons name="sparkles" size={14} color="#007AFF" />
+              <Text style={styles.aiSearchText}>AI-powered semantic search</Text>
+            </View>
+          )}
+
+          {/* Filters */}
+          {showFilters && (
+            <SearchFilters
+              filters={filters}
+              onFiltersChange={handleFiltersChange}
+            />
+          )}
+
+          {/* Search Results */}
+          <SearchResults
+            results={searchResults}
+            loading={searchLoading}
+            searchQuery={searchQuery}
+          />
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -240,6 +380,64 @@ const styles = StyleSheet.create({
   },
   urgentSectionHeaderText: {
     color: '#FF3B30',
+  },
+  searchBarContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#FFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
+  },
+  searchBarTouchable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F7',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  searchBarPlaceholder: {
+    flex: 1,
+    fontSize: 16,
+    color: '#8E8E93',
+  },
+  searchModalContainer: {
+    flex: 1,
+    backgroundColor: '#FFF',
+  },
+  searchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    backgroundColor: '#FFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
+    gap: 8,
+  },
+  closeButton: {
+    padding: 8,
+  },
+  searchInputContainer: {
+    flex: 1,
+  },
+  filterButton: {
+    padding: 8,
+  },
+  aiSearchBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#F0F8FF',
+    gap: 6,
+  },
+  aiSearchText: {
+    fontSize: 12,
+    color: '#007AFF',
+    fontWeight: '500',
   },
 });
 

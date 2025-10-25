@@ -11,9 +11,9 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
-  SafeAreaView,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { collection, getDocs } from 'firebase/firestore';
 import { getFirebaseFirestore } from '@/services/firebase/config';
@@ -121,7 +121,7 @@ export default function CreateGroupScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <View style={styles.container}>
           <View style={styles.header}>
             <TouchableOpacity onPress={() => router.back()} style={styles.cancelButton}>
@@ -140,7 +140,7 @@ export default function CreateGroupScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>

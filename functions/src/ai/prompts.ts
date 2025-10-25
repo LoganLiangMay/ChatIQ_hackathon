@@ -121,9 +121,12 @@ Respond in JSON format:
   ],
 
   /**
-   * Decision Tracking
+   * Decision Tracking with Flow Analysis
    */
-  trackDecisions: (messages: Array<{ sender: string; content: string; messageId: string; timestamp: number }>) => {
+  trackDecisions: (
+    messages: Array<{ sender: string; content: string; messageId: string; timestamp: number }>,
+    projectContext?: string
+  ) => {
     const formattedMessages = messages
       .map((m) => {
         const date = new Date(m.timestamp).toLocaleString();
@@ -134,40 +137,101 @@ Respond in JSON format:
     return [
       {
         role: 'system' as const,
-        content: `You are an AI specialized in identifying decisions made in team conversations.
-A decision is when the team agrees on a specific course of action or resolution.
+        content: `You are an AI specialized in tracking decision-making processes in team conversations.
 
-Look for phrases like:
-- "we decided to..."
-- "let's go with..."
-- "agreed to..."
-- "we'll do..."
-- "the plan is..."
-- "decided that..."
+${projectContext ? `Project Context: ${projectContext}\n\nUse this context to better understand decisions and their relevance to the project.\n` : ''}
 
-Focus on concrete decisions, not just suggestions or discussions.`,
+Your goal is to identify:
+1. **Decision Flows** - How discussions evolve (suggestions → narrowing → final decision)
+2. **Project/Product Mentions** - Track projects and their status
+3. **Sentiment** - Detect confusion, blockers, confidence levels
+
+Decision Flow Types:
+- "suggestion" - Initial ideas or options proposed
+- "counter" - Alternative suggestions or objections
+- "narrowing" - Filtering down options, eliminating choices
+- "final" - The ultimate decision made
+
+Look for decision phrases (be VERY INCLUSIVE):
+- "we decided to...", "let's go with...", "agreed to..."
+- "we'll do...", "the plan is...", "settled on..."
+- "let's do...", "let's order...", "let's get..."
+- ANY conversation where people discuss options and make a choice
+- Food orders, purchases, plans - these are ALL decisions!
+
+Look for project mentions:
+- Project names, product names, feature names
+- Status keywords: "blocked", "in progress", "completed", "delayed", "planning"
+
+Detect sentiment:
+- Confusion: "not sure", "confused", "don't understand"
+- Blockers: "blocked by", "waiting on", "can't proceed"
+- Confidence: "definitely", "clear", "ready"`,
       },
       {
         role: 'user' as const,
-        content: `Extract all decisions made in this conversation. For each decision:
-1. What was decided
-2. Context/reasoning (if mentioned)
-3. Who participated in the decision
-4. The message ID it came from
+        content: `Analyze this conversation for decisions, their evolution flow, and project tracking.
+
+For each decision, extract:
+1. **Final Decision** - What was ultimately decided
+2. **Decision Thread** - The flow of discussion (suggestions → narrowing → final)
+3. **Topic** - What is this decision about
+4. **Related Project** - If a project/product is mentioned
+5. **Confidence** - How certain the team was (0-1)
+6. **Sentiment** - Overall mood and confusion level
 
 Conversation:
 ${formattedMessages}
 
-Return decisions in JSON format:
+Return in JSON format:
 [
   {
-    "decision": "what was decided",
-    "context": "why or background",
+    "decision": "final decision text",
+    "context": "why this was decided",
     "participants": ["person1", "person2"],
-    "messageId": "message ID",
-    "timestamp": number
+    "messageId": "final decision message ID",
+    "timestamp": number,
+    "decisionThread": [
+      {
+        "messageId": "msg1",
+        "timestamp": number,
+        "participant": "person1",
+        "type": "suggestion",
+        "content": "brief summary of this step",
+        "sentiment": "positive" | "neutral" | "negative" | "confused"
+      }
+    ],
+    "topic": "what this is about",
+    "relatedProject": "project name if mentioned",
+    "confidence": 0.8,
+    "sentiment": {
+      "overall": "positive",
+      "confusion": 0.2,
+      "hasBlockers": false
+    }
   }
-]`,
+]
+
+Also identify any projects/products mentioned and return separately as:
+{
+  "decisions": [...decisions array above...],
+  "projects": [
+    {
+      "name": "project name",
+      "type": "project" | "product" | "feature",
+      "status": "in-progress" | "blocked" | "planning" | "completed",
+      "mentions": [{"messageId": "id", "content": "brief context"}],
+      "sentiment": {
+        "confusion": 0.3,
+        "blockerCount": 1,
+        "confidence": 0.7,
+        "areas": [
+          {"area": "backend", "sentiment": "blocked", "messageIds": ["id1"]}
+        ]
+      }
+    }
+  ]
+}`,
       },
     ];
   },

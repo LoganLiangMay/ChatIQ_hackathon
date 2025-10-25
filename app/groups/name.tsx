@@ -10,11 +10,11 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   ScrollView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { getDoc, doc } from 'firebase/firestore';
 import { getFirebaseFirestore } from '@/services/firebase/config';
@@ -35,6 +35,8 @@ export default function GroupNameScreen() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [projectType, setProjectType] = useState<'group' | 'project'>('group');
+  const [projectDescription, setProjectDescription] = useState('');
 
   useEffect(() => {
     loadParticipants();
@@ -79,6 +81,11 @@ export default function GroupNameScreen() {
       return;
     }
 
+    if (projectType === 'project' && !projectDescription.trim()) {
+      Alert.alert('Description Required', 'Please provide a description for your project to enable AI tracking.');
+      return;
+    }
+
     if (!user) {
       Alert.alert('Error', 'You must be signed in to create a group');
       return;
@@ -92,10 +99,14 @@ export default function GroupNameScreen() {
       // Include current user in participants
       const allParticipants = [user.uid, ...userIds];
 
-      console.log('Creating group chat:', groupName, allParticipants);
+      console.log('Creating group chat:', groupName, allParticipants, 'Type:', projectType);
 
-      // Create group chat
-      const chatId = await createGroupChat(groupName, allParticipants);
+      // Create group chat with project metadata
+      const chatId = await createGroupChat(groupName, allParticipants, {
+        projectType,
+        projectDescription: projectType === 'project' ? projectDescription : undefined,
+        aiTrackingEnabled: projectType === 'project',
+      });
 
       console.log('✅ Group chat created:', chatId);
 
@@ -118,7 +129,7 @@ export default function GroupNameScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <View style={styles.container}>
           <View style={styles.header}>
             <TouchableOpacity onPress={handleBack} style={styles.backButton}>
@@ -136,7 +147,7 @@ export default function GroupNameScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.header}>
@@ -163,6 +174,53 @@ export default function GroupNameScreen() {
             <Text style={styles.charCount}>{groupName.length}/50</Text>
           </View>
         </View>
+
+        {/* Type Selector */}
+        <View style={styles.typeSection}>
+          <Text style={styles.label}>Type</Text>
+          <View style={styles.typePicker}>
+            <TouchableOpacity
+              style={[styles.typeOption, projectType === 'group' && styles.typeOptionActive]}
+              onPress={() => setProjectType('group')}
+            >
+              <Text style={[styles.typeOptionText, projectType === 'group' && styles.typeOptionTextActive]}>
+                Group (Casual Chat)
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.typeOption, projectType === 'project' && styles.typeOptionActive]}
+              onPress={() => setProjectType('project')}
+            >
+              <Text style={[styles.typeOptionText, projectType === 'project' && styles.typeOptionTextActive]}>
+                Project (Track Progress)
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Project Description (only for projects) */}
+        {projectType === 'project' && (
+          <View style={styles.descriptionSection}>
+            <Text style={styles.label}>Project Description</Text>
+            <TextInput
+              style={styles.descriptionInput}
+              placeholder="Describe the project goals, scope, or team context..."
+              value={projectDescription}
+              onChangeText={setProjectDescription}
+              multiline
+              numberOfLines={4}
+              maxLength={300}
+              placeholderTextColor="#8E8E93"
+            />
+            <Text style={styles.charCount}>{projectDescription.length}/300</Text>
+            <View style={styles.aiNoteContainer}>
+              <Ionicons name="bulb-outline" size={16} color="#007AFF" />
+              <Text style={styles.aiNote}>
+                Tip: The AI will use this description and chat messages to track project progress, decisions, blockers, and sentiment. Keep it updated for accurate insights!
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Participants List */}
         <View style={styles.participantsSection}>
@@ -338,6 +396,69 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginHorizontal: 20,
     marginBottom: 20,
+  },
+  typeSection: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 20,
+  },
+  typePicker: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  typeOption: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#E5E5EA',
+    backgroundColor: '#F2F2F7',
+    alignItems: 'center',
+  },
+  typeOptionActive: {
+    borderColor: '#007AFF',
+    backgroundColor: '#E3F2FF',
+  },
+  typeOptionText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#666',
+    textAlign: 'center',
+  },
+  typeOptionTextActive: {
+    color: '#007AFF',
+    fontWeight: '600',
+  },
+  descriptionSection: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  descriptionInput: {
+    backgroundColor: '#F2F2F7',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#000',
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  aiNoteContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#E3F2FF',
+    borderRadius: 8,
+    gap: 8,
+  },
+  aiNote: {
+    flex: 1,
+    fontSize: 12,
+    color: '#007AFF',
+    lineHeight: 16,
   },
 });
 

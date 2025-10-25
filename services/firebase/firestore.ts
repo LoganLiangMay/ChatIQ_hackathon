@@ -179,7 +179,12 @@ export async function createDirectChat(userIds: string[]): Promise<string> {
 export async function createGroupChat(
   groupName: string,
   participantIds: string[],
-  groupPicture?: string
+  metadata?: {
+    projectType?: 'group' | 'project';
+    projectDescription?: string;
+    aiTrackingEnabled?: boolean;
+    groupPicture?: string;
+  }
 ): Promise<string> {
   const auth = await getFirebaseAuth();
   const currentUser = auth.currentUser;
@@ -239,13 +244,17 @@ export async function createGroupChat(
     id: chatId,
     type: 'group',
     name: groupName,
-    groupPicture: groupPicture || null,
+    groupPicture: metadata?.groupPicture || null,
     participants: participantIds,
     participantDetails,
     admins: [currentUser.uid], // Creator is admin
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     lastMessage: null,
+    // Project tracking fields
+    projectType: metadata?.projectType || 'group',
+    projectDescription: metadata?.projectDescription || null,
+    aiTrackingEnabled: metadata?.aiTrackingEnabled || false,
   };
 
   console.log('🔵 Creating group chat document...');

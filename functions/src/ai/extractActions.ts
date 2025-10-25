@@ -99,17 +99,30 @@ export const extractActionItems = functions.https.onCall(
       });
 
       // Build message array (chronological order)
+      // Filter out images and empty messages (same logic as summarize.ts)
       const messages = messagesSnap.docs
         .reverse()
         .map((doc) => {
           const data = doc.data();
+
+          // Check for image first, then content (prevent "📷 [Image]" in AI analysis)
+          let content: string;
+          if (data.imageUrl) {
+            return null; // Skip images - they don't contain action items
+          } else if (data.content && data.content.trim()) {
+            content = data.content;
+          } else {
+            return null; // Skip empty messages
+          }
+
           return {
             messageId: doc.id,
             sender: userNames.get(data.senderId) || 'Unknown',
-            content: data.content || '[Image]',
+            content,
             timestamp: data.timestamp,
           };
-        });
+        })
+        .filter((msg): msg is NonNullable<typeof msg> => msg !== null);
 
       // Generate prompt using template
       functions.logger.info('Calling OpenAI for action extraction', {

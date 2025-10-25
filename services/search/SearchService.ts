@@ -1,7 +1,7 @@
 /**
  * SearchService
  * Handles search operations across:
- * - Messages (SQLite)
+ * - Messages (AI-powered semantic search via Firebase Functions)
  * - Chats (SQLite)
  * - Users (Firestore)
  */
@@ -11,9 +11,11 @@ import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { getFirebaseFirestore } from '@/services/firebase/config';
 import { Message } from '@/types/message';
 import { Chat } from '@/types/chat';
+import { aiService } from '@/services/ai/AIService';
+import type { SearchResult as AISearchResult } from '@/services/ai/types';
 
 export interface SearchResult {
-  messages: MessageSearchResult[];
+  messages: AISearchResult[];
   chats: Chat[];
   users: UserSearchResult[];
 }
@@ -31,11 +33,39 @@ export interface UserSearchResult {
   online?: boolean;
 }
 
+export interface SearchFilters {
+  chatId?: string;
+  senderId?: string;
+  dateFrom?: number;
+  dateTo?: number;
+  priorityOnly?: boolean;
+  hasActionItems?: boolean;
+}
+
 class SearchService {
   /**
-   * Search across all categories
+   * Determine if query is a question (requires AI semantic search)
    */
-  async searchAll(searchQuery: string, currentUserId: string): Promise<SearchResult> {
+  private isQuestion(query: string): boolean {
+    const lowerQuery = query.toLowerCase().trim();
+    const questionWords = ['what', 'when', 'where', 'who', 'why', 'how', 'which', 'whose'];
+    const questionMarks = query.includes('?');
+
+    return questionMarks || questionWords.some(word => lowerQuery.startsWith(word + ' '));
+  }
+
+  /**
+   * TWO-TIER SEARCH: Fast keyword first, AI semantic for questions
+   *
+   * Tier 1 (Instant): Keyword search for contacts, chats, messages
+   * Tier 2 (2-3s): AI semantic search for complex questions
+   */
+  async searchAll(
+    searchQuery: string,
+    currentUserId: string,
+    filters?: SearchFilters,
+    forceAI: boolean = false
+  ): Promise<SearchResult> {
     if (!searchQuery || searchQuery.trim().length < 2) {
       return {
         messages: [],
@@ -44,20 +74,101 @@ class SearchService {
       };
     }
 
-    const query = searchQuery.trim().toLowerCase();
+    const query = searchQuery.trim();
 
-    // Execute all searches in parallel
-    const [messages, chats, users] = await Promise.all([
-      this.searchMessages(query, currentUserId),
+    // TIER 1: Always run fast keyword search for contacts and chats (instant)
+    const [chats, users] = await Promise.all([
       this.searchChats(query, currentUserId),
       this.searchUsers(query, currentUserId),
     ]);
+
+    // TIER 2: Decide between basic or AI search for messages
+    const shouldUseAI = forceAI || this.isQuestion(query);
+
+    let messages: AISearchResult[];
+
+    if (shouldUseAI) {
+      // Use AI semantic search for questions
+      console.log('🧠 Using AI semantic search for:', query);
+      messages = await this.searchMessagesAI(query, currentUserId, filters);
+    } else {
+      // Use fast keyword search for simple queries
+      console.log('⚡ Using fast keyword search for:', query);
+      messages = await this.searchMessagesBasic(query, currentUserId);
+    }
 
     return {
       messages,
       chats,
       users,
     };
+  }
+
+  /**
+   * AI-powered semantic search for messages
+   */
+  async searchMessagesAI(
+    searchQuery: string,
+    currentUserId: string,
+    filters?: SearchFilters,
+    limit: number = 20
+  ): Promise<AISearchResult[]> {
+    try {
+      const results = await aiService.searchMessages(searchQuery, filters, limit);
+      return results;
+    } catch (error) {
+      console.error('AI search failed, falling back to basic search:', error);
+      // Fallback to basic search if AI fails
+      return this.searchMessagesBasic(searchQuery, currentUserId, limit);
+    }
+  }
+
+  /**
+   * Basic keyword search for messages (fallback)
+   */
+  async searchMessagesBasic(
+    searchQuery: string,
+    currentUserId: string,
+    limitCount: number = 20
+  ): Promise<AISearchResult[]> {
+    try {
+      const messages = await db.searchMessages(searchQuery, limitCount);
+      
+      // Convert to AISearchResult format
+      const results = await Promise.all(
+        messages.map(async (message) => {
+          try {
+            const chat = await db.getChat(message.chatId);
+            return {
+              messageId: message.id,
+              chatId: message.chatId,
+              content: message.content,
+              senderId: message.senderId,
+              senderName: message.senderName || 'Unknown',
+              timestamp: message.timestamp,
+              relevanceScore: 0.5, // Default score for basic search
+              chatName: chat?.name || 'Unknown Chat',
+            };
+          } catch (error) {
+            return {
+              messageId: message.id,
+              chatId: message.chatId,
+              content: message.content,
+              senderId: message.senderId,
+              senderName: message.senderName || 'Unknown',
+              timestamp: message.timestamp,
+              relevanceScore: 0.5,
+              chatName: 'Unknown Chat',
+            };
+          }
+        })
+      );
+
+      return results;
+    } catch (error) {
+      console.error('Error in basic message search:', error);
+      return [];
+    }
   }
 
   /**

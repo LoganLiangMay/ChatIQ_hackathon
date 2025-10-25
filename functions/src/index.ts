@@ -191,6 +191,46 @@ export const onMessageCreated = functions.firestore
       }
       // ===============================================
       
+      // ===============================================
+      // 🔍 Phase 6: Auto-embed messages for semantic search (RAG)
+      // ===============================================
+      if (messageData.type === 'text' && messageData.content) {
+        try {
+          console.log('🔍 Embedding message for semantic search:', messageId);
+          
+          // Import embedding function
+          const { embedMessage } = require('./ai/embeddings');
+          
+          // Embed message (non-blocking - don't wait)
+          embedMessage(
+            messageId,
+            chatId,
+            messageData.content,
+            {
+              senderId: messageData.senderId,
+              senderName: messageData.senderName,
+              chatName: chatData?.name,
+              isPriority: messageData.priority?.isPriority || false,
+            }
+          ).catch((embedError: any) => {
+            // Don't fail the whole function if embedding fails
+            console.error('⚠️ Message embedding failed (non-critical):', {
+              error: embedError.message,
+              messageId
+            });
+          });
+          
+          console.log('✅ Message embedding initiated for:', messageId);
+        } catch (embedError: any) {
+          // Don't fail the whole function if embedding setup fails
+          console.error('⚠️ Embedding setup failed (non-critical):', {
+            error: embedError.message,
+            messageId
+          });
+        }
+      }
+      // ===============================================
+      
       return result;
       
     } catch (error) {
@@ -303,3 +343,84 @@ export { summarizeThread } from './ai/summarize';
  * Extract tasks and commitments from conversations
  */
 export { extractActionItems } from './ai/extractActions';
+
+/**
+ * AI Features - Decision Tracking
+ * Track decisions made in conversations
+ */
+export { extractDecisions } from './ai/extractDecisions';
+
+/**
+ * AI Features - Blocker Detection
+ * Detect project blockers preventing progress
+ */
+export { detectBlockers } from './ai/detectBlockers';
+
+/**
+ * AI Features - Smart Semantic Search
+ * Search messages by meaning with AI re-ranking
+ */
+import { searchMessages as searchMessagesFunc } from './ai/searchMessages';
+
+export const searchMessages = functions
+  .runWith({
+    timeoutSeconds: 60, // 1 minute for search processing
+    memory: '512MB', // Increased memory for AI operations
+  })
+  .https.onCall(async (data, context) => {
+  // Require authentication
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      'unauthenticated',
+      'User must be authenticated to search messages'
+    );
+  }
+
+  const { query, filters, limit } = data;
+  const userId = context.auth.uid;
+
+  if (!query || typeof query !== 'string') {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'Query is required and must be a string'
+    );
+  }
+
+  try {
+    const results = await searchMessagesFunc(query, userId, filters, limit);
+    return { results };
+  } catch (error: any) {
+    console.error('Error in searchMessages function:', error);
+    throw new functions.https.HttpsError(
+      'internal',
+      error.message || 'Failed to search messages'
+    );
+  }
+});
+
+/**
+ * AI Features - Conversational AI Agent
+ * Multi-step reasoning with tool calling and LangSmith tracing
+ */
+export { aiAgent } from './ai/agent';
+
+/**
+ * AI Features - Daily Auto-Summaries
+ * Automatic background summarization with historical storage
+ */
+export { 
+  generateDailySummaries,  // Scheduled: runs daily at 1 AM UTC
+  saveChatSummary,         // Manual: save/update summary from UI
+  getChatSummaries         // Fetch historical summaries for a chat
+} from './ai/dailySummaries';
+
+/**
+ * AI Features - Knowledge Agent (Server-Side)
+ * LangChain + LangSmith for complex RAG queries
+ * Auto-traces to LangSmith for observability
+ */
+export { 
+  knowledgeAgent,        // Complex queries with RAG
+  embedContent,          // Embed messages/summaries
+  searchVectorStore      // Semantic search via Pinecone
+} from './ai/knowledgeAgent';

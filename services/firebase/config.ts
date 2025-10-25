@@ -120,3 +120,6 @@ export const getFirebaseFirestoreSync = (): Firestore => {
   return firestore;
 };
 
+// Export app for Firebase Functions initialization
+export { app };
+

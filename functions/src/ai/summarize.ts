@@ -98,16 +98,36 @@ export const summarizeThread = functions.https.onCall(
       });
 
       // Build message array in chronological order
+      // Filter out empty messages and format images properly
       const messages = messagesSnap.docs
         .reverse() // Reverse to get chronological order
         .map((doc) => {
           const data = doc.data();
+          // Proper logic: Check for image first, then content
+          let content: string;
+          if (data.imageUrl) {
+            content = '📷 [Image]';
+          } else if (data.content && data.content.trim()) {
+            content = data.content;
+          } else {
+            return null; // Filter out empty messages
+          }
+
           return {
             sender: userNames.get(data.senderId) || 'Unknown',
-            content: data.content || data.imageUrl ? '📷 Image' : '[No content]',
+            content,
             timestamp: data.timestamp,
           };
-        });
+        })
+        .filter((msg): msg is NonNullable<typeof msg> => msg !== null); // Remove nulls
+
+      // Check if we have any valid messages after filtering
+      if (messages.length === 0) {
+        throw new functions.https.HttpsError(
+          'not-found',
+          'No valid text messages found in this chat (only empty or image messages)'
+        );
+      }
 
       // Extract metadata
       const participantNames = Array.from(
@@ -145,6 +165,60 @@ export const summarizeThread = functions.https.onCall(
         tokensUsed: response.usage?.total_tokens || 0,
       });
 
+      // ===============================================
+      // 💾 Auto-save summary to Firestore for history
+      // ===============================================
+      const dateKey = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const now = Date.now();
+      
+      try {
+        const summaryRef = firestore
+          .collection('chats')
+          .doc(chatId)
+          .collection('summaries')
+          .doc(dateKey);
+        
+        const existingSummary = await summaryRef.get();
+        
+        await summaryRef.set({
+          date: dateKey,
+          summary,
+          messageCount: messages.length,
+          participants: participantNames,
+          timeRange,
+          createdAt: existingSummary.exists ? existingSummary.data()!.createdAt : now,
+          updatedAt: now,
+          generatedBy: 'manual',
+          userId: context.auth.uid,
+        }, { merge: true });
+        
+        functions.logger.info('Summary saved to Firestore', {
+          chatId,
+          date: dateKey,
+          isUpdate: existingSummary.exists,
+        });
+        
+        // Embed for RAG (async, don't wait)
+        embedSummaryForRAG(chatId, dateKey, summary, {
+          messageCount: messages.length,
+          participants: participantNames,
+        }).catch((error) => {
+          functions.logger.warn('Failed to embed summary (non-critical)', {
+            chatId,
+            date: dateKey,
+            error: error.message,
+          });
+        });
+        
+      } catch (saveError: any) {
+        // Non-critical - log but don't fail the request
+        functions.logger.warn('Failed to save summary to Firestore (non-critical)', {
+          chatId,
+          error: saveError.message,
+        });
+      }
+      // ===============================================
+
       return {
         summary,
         messageCount: messages.length,
@@ -172,4 +246,51 @@ export const summarizeThread = functions.https.onCall(
     }
   }
 );
+
+/**
+ * Helper: Embed summary for RAG (Pinecone)
+ * Makes summaries searchable by AI Assistant
+ */
+async function embedSummaryForRAG(
+  chatId: string,
+  dateKey: string,
+  summary: string,
+  metadata: { messageCount: number; participants: string[] }
+): Promise<void> {
+  try {
+    // Import embedding function
+    const { embedMessage } = require('./embeddings');
+    
+    // Create unique ID for summary
+    const summaryId = `summary_${chatId}_${dateKey}`;
+    
+    // Embed with enriched metadata
+    await embedMessage(
+      summaryId,
+      chatId,
+      `Daily Summary (${dateKey}): ${summary}`,
+      {
+        type: 'daily_summary',
+        date: dateKey,
+        messageCount: metadata.messageCount,
+        participants: metadata.participants.join(', '),
+        generatedBy: 'manual',
+      }
+    );
+    
+    functions.logger.info('Summary embedded for RAG', {
+      chatId,
+      date: dateKey,
+      summaryId,
+    });
+    
+  } catch (error: any) {
+    // Non-critical error - log and continue
+    functions.logger.warn('Summary embedding failed', {
+      chatId,
+      date: dateKey,
+      error: error.message,
+    });
+  }
+}
 

@@ -14,10 +14,10 @@ Run this command with **your actual OpenAI API key**:
 
 ```bash
 cd /Applications/Gauntlet/chat_iq/functions
-firebase functions:config:set openai.api_key="sk-proj-YOUR-KEY-HERE"
+firebase functions:config:set openai.api_key="your_openai_api_key_here"
 ```
 
-**Replace `sk-proj-YOUR-KEY-HERE` with your actual OpenAI API key!**
+**Replace `your_openai_api_key_here` with your actual OpenAI API key!**
 
 Then redeploy the functions:
 
@@ -52,7 +52,7 @@ Firebase recommends using `.env` files instead of `functions.config()`. Let's se
 ```bash
 cd /Applications/Gauntlet/chat_iq/functions
 cat > .env << 'EOF'
-OPENAI_API_KEY=sk-proj-YOUR-KEY-HERE
+OPENAI_API_KEY=your_openai_api_key_here
 EOF
 ```
 

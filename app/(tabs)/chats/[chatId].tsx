@@ -22,6 +22,7 @@ import { MessageInput } from '@/components/messages/MessageInput';
 import { TypingIndicator } from '@/components/messages/TypingIndicator';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { SummaryModal } from '@/components/ai/SummaryModal';
+import { SummaryHistory } from '@/components/ai/SummaryHistory';
 import { ActionItemsList } from '@/components/ai/ActionItemsList';
 import type { ActionItem } from '@/services/ai/types';
 
@@ -32,6 +33,7 @@ export default function ChatScreen() {
   const [chatLoading, setChatLoading] = useState(true);
   const [otherUserId, setOtherUserId] = useState<string | undefined>(undefined);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [showSummaryHistory, setShowSummaryHistory] = useState(false);
   
   const { messages, loading, sending, sendMessage, sendImage, markAllAsRead } = useMessages(
     chatId || '',
@@ -281,7 +283,7 @@ export default function ChatScreen() {
   }
   
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -297,6 +299,7 @@ export default function ChatScreen() {
           participantCount={chat?.participants.length}
           onSummarize={handleSummarize}
           onExtractActions={handleExtractActions}
+          onViewHistory={() => setShowSummaryHistory(true)}
         />
         
         {/* Offline Banner */}
@@ -337,6 +340,14 @@ export default function ChatScreen() {
           loading={aiLoading}
           error={aiError}
           onClose={() => setShowSummaryModal(false)}
+        />
+        
+        {/* AI Summary History Modal */}
+        <SummaryHistory
+          visible={showSummaryHistory}
+          chatId={chatId || null}
+          chatName={getChatName()}
+          onClose={() => setShowSummaryHistory(false)}
         />
         
         {/* AI Action Items Modal */}

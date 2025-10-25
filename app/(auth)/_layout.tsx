@@ -2,7 +2,15 @@ import { Stack } from 'expo-router';
 
 export default function AuthLayout() {
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        gestureEnabled: true,
+        fullScreenGestureEnabled: false, // Only edge detection
+        gestureResponseDistance: 35, // Small edge area (35px) like iMessage
+        animation: 'slide_from_right',
+      }}
+    >
       <Stack.Screen name="sign-in" />
       <Stack.Screen name="sign-up" />
     </Stack>

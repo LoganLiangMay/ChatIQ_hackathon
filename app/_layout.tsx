@@ -1,6 +1,9 @@
+import 'react-native-gesture-handler';
+import '@/polyfills';
 import { useEffect, useState, useRef } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet, Text, AppState, AppStateStatus } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { getAuth } from 'firebase/auth';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ErrorBoundary } from '@/components/error/ErrorBoundary';
@@ -170,26 +173,36 @@ export default function RootLayout() {
   }
   
   return (
-    <ErrorBoundary>
-      <AuthProvider>
-        {/* In-app notification banner */}
-        {bannerVisible && bannerData && (
-          <MessageBanner
-            senderName={bannerData.senderName}
-            message={bannerData.message}
-            chatId={bannerData.chatId}
-            visible={bannerVisible}
-            onDismiss={() => setBannerVisible(false)}
-          />
-        )}
-        
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="groups" />
-        </Stack>
-      </AuthProvider>
-    </ErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ErrorBoundary>
+        <AuthProvider>
+          {/* In-app notification banner */}
+          {bannerVisible && bannerData && (
+            <MessageBanner
+              senderName={bannerData.senderName}
+              message={bannerData.message}
+              chatId={bannerData.chatId}
+              visible={bannerVisible}
+              onDismiss={() => setBannerVisible(false)}
+            />
+          )}
+
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              gestureEnabled: true,
+              fullScreenGestureEnabled: false, // Only edge detection
+              gestureResponseDistance: 35, // Small edge area (35px) like iMessage
+              animation: 'slide_from_right',
+            }}
+          >
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="groups" />
+          </Stack>
+        </AuthProvider>
+      </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }
 

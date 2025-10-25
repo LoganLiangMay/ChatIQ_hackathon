@@ -1,65 +1,75 @@
 # 📚 Quick Documentation Navigation
 
-All documentation has been organized! Here's where to find everything:
+**Last Updated:** October 25, 2025
+All documentation has been reorganized into a clean structure!
 
 ---
 
 ## 🎯 Start Here
 
-**Main Documentation Hub:** [`docs/INDEX.md`](./docs/INDEX.md)  
-**Complete File Index:** [`docs/DOCUMENTATION-INDEX.md`](./docs/DOCUMENTATION-INDEX.md)
+**Main README:** [`README.md`](./README.md)
+**Development Guide:** [`CLAUDE.md`](./CLAUDE.md) (AI assistant instructions)
 
 ---
 
-## 📁 Quick Links by Category
+## 📁 Documentation Structure
 
-| Category | Location | What's Inside |
-|----------|----------|---------------|
-| **🤖 AI Features** | [`docs/ai-features/`](./docs/ai-features/) | AI development, deployment, testing (16 files) |
-| **✨ Features** | [`docs/features/`](./docs/features/) | Group chat, notifications, read receipts (14 files) |
-| **🐛 Bug Fixes** | [`docs/bug-fixes/`](./docs/bug-fixes/) | All bug fix documentation (16 files) |
-| **🧪 Testing** | [`docs/testing/`](./docs/testing/) | Testing guides & strategies (9 files) |
-| **⚙️ Setup** | [`docs/setup-guides/`](./docs/setup-guides/) | Installation & configuration (12 files) |
-| **🚀 Deployment** | [`docs/deployment/`](./docs/deployment/) | Production deployment (3 files) |
-| **🧠 Memory Bank** | [`memory-bank/`](./memory-bank/) | Project context & AI memory (12 files) |
-| **☁️ AWS Lambda** | [`aws/lambda/`](./aws/lambda/) | Lambda functions & deployment (1 README + code) |
-
----
-
-## 🔥 Top Documents
-
-1. **[AI Development Journey](./docs/ai-features/AI-DEVELOPMENT-LOG.md)** - 8,000 words on AI development
-2. **[Product Requirements](./memory-bank/product-requirements.md)** - Complete PRD (1,030 lines)
-3. **[Code Architecture](./memory-bank/code-architecture.md)** - System design & patterns
-4. **[Breaking Changes](./docs/setup-guides/BREAKING-CHANGES-SDK-54.md)** - 46 fixes documented
-5. **[Group Chat Implementation](./docs/features/GROUP-CHAT-IMPLEMENTED.md)** - Feature deep-dive
-6. **[AI Infrastructure Setup](./memory-bank/ai-infrastructure-setup.md)** - AWS/Firebase setup
-7. **[Testing Strategy](./docs/testing/TWO-DEVICE-TESTING-PLAN.md)** - How we test
+| Category | Location | Files | What's Inside |
+|----------|----------|-------|---------------|
+| **🤖 AI Features** | [`memory-bank/ai-features/`](./memory-bank/ai-features/) | 14 | AI feature completion docs |
+| **🧪 Testing** | [`memory-bank/testing/`](./memory-bank/testing/) | 5 | Testing guides & evaluation |
+| **⚙️ Setup Guides** | [`memory-bank/setup-guides/`](./memory-bank/setup-guides/) | 9 | Configuration & setup |
+| **🚀 Deployment** | [`memory-bank/deployment/`](./memory-bank/deployment/) | 5 | Deployment instructions |
+| **🐛 Bug Fixes** | [`memory-bank/bug-fixes/`](./memory-bank/bug-fixes/) | 12 | Historical debugging logs |
+| **📝 Implementation** | [`memory-bank/implementation-notes/`](./memory-bank/implementation-notes/) | 3 | Recent feature guides |
+| **📦 Archive** | [`memory-bank/archive/`](./memory-bank/archive/) | 16 | Old/outdated files |
+| **🧠 Core Docs** | [`memory-bank/`](./memory-bank/) | 14 | Essential project docs |
 
 ---
 
-## 🎓 By Role
+## 🔥 Essential Documents
 
-### **For New Developers**
-- Start: [`README.md`](./README.md)
-- Setup: [`docs/setup-guides/SETUP.md`](./docs/setup-guides/SETUP.md)
-- Architecture: [`memory-bank/code-architecture.md`](./memory-bank/code-architecture.md)
+### Getting Started
+1. **[README.md](./README.md)** - Project overview & quick start
+2. **[CLAUDE.md](./CLAUDE.md)** - Development guide for AI assistants
+3. **[Product Requirements](./memory-bank/product-requirements.md)** - Complete PRD
+4. **[Code Architecture](./memory-bank/code-architecture.md)** - System design
 
-### **For AI Development**
-- Infrastructure: [`memory-bank/ai-infrastructure-setup.md`](./memory-bank/ai-infrastructure-setup.md)
-- Progress: [`memory-bank/ai-implementation-progress.md`](./memory-bank/ai-implementation-progress.md)
-- AWS: [`aws/lambda/README.md`](./aws/lambda/README.md)
+### Testing & Status
+5. **[Testing Guide](./memory-bank/testing/TESTING-RECOMMENDATIONS.md)** - Comprehensive testing
+6. **[Project Status](./memory-bank/testing/PROJECT-STATUS-SUMMARY.md)** - Current status
+7. **[Testing Checklist](./memory-bank/testing-checklist.md)** - Rubric (100 pts)
 
-### **For Testing**
-- Checklist: [`memory-bank/testing-checklist.md`](./memory-bank/testing-checklist.md)
-- Strategy: [`docs/testing/TWO-DEVICE-TESTING-PLAN.md`](./docs/testing/TWO-DEVICE-TESTING-PLAN.md)
+### AI Features
+8. **[AI Features Overview](./memory-bank/ai-features/AI-PHASE-2-PROGRESS.md)** - All 5 features
+9. **[AI Assistant](./memory-bank/ai-features/AI-AGENT-IMPLEMENTATION-COMPLETE.md)** - Conversational agent
 
-### **For Troubleshooting**
-- Errors: [`docs/error-fixes/`](./docs/error-fixes/)
-- Troubleshooting: [`docs/troubleshooting/`](./docs/troubleshooting/)
+### Recent Work
+10. **[Swipe Gesture](./memory-bank/implementation-notes/EDGE-SWIPE-CONFIGURATION.md)** - Edge swipe feature
 
 ---
 
-**Last Updated:** October 23, 2025  
-**All 120+ files organized and indexed!** ✅
+## 🎓 Quick Reference by Task
+
+### I Want To...
+- **Get started** → [`README.md`](./README.md)
+- **Understand the code** → [`memory-bank/code-architecture.md`](./memory-bank/code-architecture.md)
+- **Test the app** → [`memory-bank/testing/TESTING-RECOMMENDATIONS.md`](./memory-bank/testing/TESTING-RECOMMENDATIONS.md)
+- **Check project status** → [`memory-bank/testing/PROJECT-STATUS-SUMMARY.md`](./memory-bank/testing/PROJECT-STATUS-SUMMARY.md)
+- **Learn about AI features** → [`memory-bank/ai-features/AI-PHASE-2-PROGRESS.md`](./memory-bank/ai-features/AI-PHASE-2-PROGRESS.md)
+- **Set up Pinecone** → [`memory-bank/setup-guides/PINECONE-SETUP-GUIDE.md`](./memory-bank/setup-guides/PINECONE-SETUP-GUIDE.md)
+- **Deploy to Firebase** → [`memory-bank/deployment/DEPLOY-NOW.md`](./memory-bank/deployment/DEPLOY-NOW.md)
+- **Fix a bug** → Check [`memory-bank/bug-fixes/`](./memory-bank/bug-fixes/)
+- **Understand swipe gesture** → [`memory-bank/implementation-notes/EDGE-SWIPE-CONFIGURATION.md`](./memory-bank/implementation-notes/EDGE-SWIPE-CONFIGURATION.md)
+
+---
+
+## 📊 Documentation Stats
+
+- **Total organized:** 66 .md files
+- **At root:** 3 files (essentials only)
+- **In memory-bank:** 63 files (organized by purpose)
+
+**Organization Date:** October 25, 2025
+✅ **Clean and organized!**
 

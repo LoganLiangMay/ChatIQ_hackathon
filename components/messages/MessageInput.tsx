@@ -162,7 +162,7 @@ export function MessageInput({
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={90}
+      keyboardVerticalOffset={0}
     >
       <View style={styles.container}>
         {/* Image button */}
@@ -214,7 +214,9 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 8,
+    paddingHorizontal: 8,
+    paddingTop: 6,
+    paddingBottom: Platform.OS === 'ios' ? 8 : 6, // Minimal padding for compact keyboard layout
     backgroundColor: '#FFF',
     borderTopWidth: 1,
     borderTopColor: '#E5E5EA',

@@ -27,6 +27,9 @@ import { db } from '@/services/database/sqlite';
 import { useAuth } from '@/contexts/AuthContext';
 import { Chat } from '@/types/chat';
 import { getInitials } from '@/utils/formatters';
+import { getFirebaseFirestore } from '@/services/firebase/config';
+import { doc, updateDoc } from 'firebase/firestore';
+import { ProjectOverviewModal } from '@/components/ai/ProjectOverviewModal';
 
 interface Participant {
   uid: string;
@@ -45,6 +48,8 @@ export default function GroupInfoScreen() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCurrentUserAdmin, setIsCurrentUserAdmin] = useState(false);
+  const [showProjectOverview, setShowProjectOverview] = useState(false);
+  const isProject = chat?.projectType === 'project';
   
   // Load group info
   useEffect(() => {
@@ -85,6 +90,10 @@ export default function GroupInfoScreen() {
             participantDetails: data.participantDetails || {},
             createdAt: data.createdAt?.toMillis?.() || Date.now(),
             updatedAt: data.updatedAt?.toMillis?.() || Date.now(),
+            // Project tracking fields
+            projectType: data.projectType,
+            projectDescription: data.projectDescription,
+            aiTrackingEnabled: data.aiTrackingEnabled,
           };
         }
       }
@@ -177,6 +186,30 @@ export default function GroupInfoScreen() {
     }
   };
   
+  const handleEditProjectDescription = () => {
+    Alert.prompt(
+      'Edit Project Description',
+      'Update the AI context for better tracking',
+      async (text) => {
+        if (text !== null) {
+          try {
+            const firestore = await getFirebaseFirestore();
+            await updateDoc(doc(firestore, 'chats', chatId), {
+              projectDescription: text,
+            });
+            Alert.alert('Success', 'Project description updated');
+            await loadGroupInfo(); // Refresh
+          } catch (error) {
+            console.error('Error updating description:', error);
+            Alert.alert('Error', 'Failed to update project description');
+          }
+        }
+      },
+      'plain-text',
+      chat?.projectDescription || ''
+    );
+  };
+
   const showParticipantOptions = (participant: Participant) => {
     const isMe = participant.uid === user?.uid;
     
@@ -295,6 +328,31 @@ export default function GroupInfoScreen() {
             ))}
           </View>
           
+          {/* Project Tools (only for projects) */}
+          {isProject && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Project Tools</Text>
+              
+              <TouchableOpacity
+                style={styles.actionItem}
+                onPress={() => setShowProjectOverview(true)}
+              >
+                <Ionicons name="analytics-outline" size={24} color="#007AFF" />
+                <Text style={styles.actionItemText}>View Project Overview</Text>
+              </TouchableOpacity>
+              
+              {isCurrentUserAdmin && (
+                <TouchableOpacity
+                  style={styles.actionItem}
+                  onPress={handleEditProjectDescription}
+                >
+                  <Ionicons name="create-outline" size={24} color="#007AFF" />
+                  <Text style={styles.actionItemText}>Edit Project Description</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+          
           {/* Actions */}
           <View style={styles.section}>
             {isCurrentUserAdmin && (
@@ -318,6 +376,15 @@ export default function GroupInfoScreen() {
             </TouchableOpacity>
           </View>
         </ScrollView>
+        
+        {/* Project Overview Modal */}
+        {showProjectOverview && (
+          <ProjectOverviewModal
+            chatId={chatId}
+            visible={showProjectOverview}
+            onClose={() => setShowProjectOverview(false)}
+          />
+        )}
       </View>
     </SafeAreaView>
   );

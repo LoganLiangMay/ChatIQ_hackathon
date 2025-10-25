@@ -50,23 +50,27 @@ export function useMessages(chatId: string, currentUserId: string): UseMessagesR
   // Set up Firebase real-time listener
   useEffect(() => {
     if (!chatId || !currentUserId) return;
-    
+
     let unsubscribe: (() => void) | undefined;
-    
+    let isInitialLoad = true; // Track if this is the first snapshot
+
     const setupListener = async () => {
       try {
         console.log('🔵 [useMessages] Setting up Firestore listener for chat:', chatId);
         const firestore = await getFirebaseFirestore();
         console.log('✅ [useMessages] Firestore instance obtained');
-        
+
         const messagesRef = collection(firestore, `chats/${chatId}/messages`);
         const q = query(
           messagesRef,
           orderBy('timestamp', 'desc'),
           limit(50)
         );
-      
+
         unsubscribe = onSnapshot(q, async (snapshot) => {
+          const isRealtime = !isInitialLoad;
+          isInitialLoad = false; // After first snapshot, all subsequent are realtime
+
           snapshot.docChanges().forEach(async (change) => {
             const firestoreMessage = change.doc.data();
             const messageId = change.doc.id;
@@ -91,20 +95,23 @@ export function useMessages(chatId: string, currentUserId: string): UseMessagesR
               try {
                 // Save to SQLite (no-op in Expo Go, but works in production)
                 await db.insertOrUpdateMessage(message);
-                
+
                 // Mark as delivered immediately (only for messages from others)
                 if (firestoreMessage.senderId !== currentUserId) {
                   await messageService.markAsDelivered(chatId, messageId, currentUserId);
-                  
-                  // Trigger notification (manager handles foreground/background logic)
-                  await notificationManager.handleIncomingMessage(
-                    chatId,
-                    firestoreMessage.senderName,
-                    message.content || '📷 Image',
-                    firestoreMessage.senderId,
-                    currentUserId
-                  );
-                  
+
+                  // ✅ ONLY trigger notification for REALTIME messages (not initial load)
+                  // This prevents toast notifications when entering a chat
+                  if (isRealtime) {
+                    await notificationManager.handleIncomingMessage(
+                      chatId,
+                      firestoreMessage.senderName,
+                      message.content || '📷 Image',
+                      firestoreMessage.senderId,
+                      currentUserId
+                    );
+                  }
+
                   // 🤖 AI: Priority detection now happens server-side automatically
                   // when the message is created. No client-side detection needed!
                 }

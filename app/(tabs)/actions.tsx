@@ -10,10 +10,12 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChats } from '@/hooks/useChats';
 import { actionItemsService } from '@/services/ai/ActionItemsService';
+import { scanTracker } from '@/services/ai/ScanTracker';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { getFirebaseFirestore } from '@/services/firebase/config';
 import type { ActionItem } from '@/services/ai/types';
+import { ErrorBoundary } from '@/components/error/ErrorBoundary';
 
 interface ActionItemWithChat extends ActionItem {
   chatId: string;
@@ -28,64 +30,133 @@ export default function ActionsScreen() {
   const [allActionItems, setAllActionItems] = useState<ActionItemWithChat[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
-
-  // Auto-scan all chats for action items on first load
-  const scanAllChats = async () => {
-    if (!user?.uid || !chats || chats.length === 0) return;
-    
-    setScanning(true);
-    console.log('🔍 Scanning', chats.length, 'chats for action items...');
-    
-    try {
-      let totalItemsFound = 0;
-      
-      // Extract action items from each chat (in parallel for speed)
-      const extractPromises = chats.slice(0, 10).map(async (chat) => {
-        try {
-          const items = await extractActionItems(chat.id, 50);
-          
-          if (items && items.length > 0) {
-            // Filter and save to Firestore
-            const filteredItems = items.map((item: any) => ({
-              ...item,
-              owner: item.owner === 'null' ? undefined : item.owner,
-              deadline: item.deadline === 'null' ? undefined : item.deadline,
-            }));
-            
-            await actionItemsService.saveActionItems(user.uid!, chat.id, filteredItems);
-            totalItemsFound += filteredItems.length;
-            console.log(`✅ Found ${filteredItems.length} action items in ${chat.id}`);
-          }
-        } catch (error) {
-          console.error(`Error extracting from chat ${chat.id}:`, error);
-        }
-      });
-      
-      await Promise.all(extractPromises);
-      console.log(`✅ Scan complete! Found ${totalItemsFound} total action items`);
-    } catch (error) {
-      console.error('Error scanning chats:', error);
-      Alert.alert('Error', 'Failed to scan chats for action items');
-    } finally {
-      setScanning(false);
-    }
-  };
+  const [hasScanned, setHasScanned] = useState(false);
+  const [shouldScan, setShouldScan] = useState(false);
 
   // Load action items with real-time updates
   useEffect(() => {
     if (!user?.uid) return;
 
     let unsubscribe: (() => void) | undefined;
+    let isMounted = true; // Track if component is mounted
+
+    // ⚡ INCREMENTAL SCAN: Only scans NEW messages since last scan
+    const scanAllChats = async (forceRescan = false) => {
+      if (!isMounted || !user?.uid || !chats || chats.length === 0) return;
+      if (!forceRescan && hasScanned) return;
+
+      setScanning(true);
+      if (!forceRescan) setHasScanned(true);
+
+      try {
+        let totalItemsFound = 0;
+        let chatsScanned = 0;
+        let chatsSkipped = 0;
+
+        console.log('🔍 Checking', chats.length, 'chats for new messages...');
+
+        // Process chats with concurrency limit (5 at a time)
+        const BATCH_SIZE = 5;
+        const chatsToCheck = chats.slice(0, 15); // Check up to 15 chats
+
+        for (let i = 0; i < chatsToCheck.length; i += BATCH_SIZE) {
+          if (!isMounted) break;
+
+          const batch = chatsToCheck.slice(i, i + BATCH_SIZE);
+
+          await Promise.all(batch.map(async (chat) => {
+            if (!isMounted) return;
+
+            try {
+              // Get last scan timestamp
+              const lastScan = await scanTracker.getLastScanTimestamp(
+                user.uid!,
+                chat.id,
+                'actionItems'
+              );
+
+              // Check if chat has new messages
+              const latestMessageTime = chat.lastMessage?.timestamp || 0;
+
+              if (!forceRescan && latestMessageTime <= lastScan) {
+                chatsSkipped++;
+                console.log(`⏭️ Skipping ${chat.id} - no new messages`);
+                return;
+              }
+
+              console.log(`📊 Scanning ${chat.id} for NEW action items (since ${new Date(lastScan).toLocaleString()})...`);
+
+              // Extract action items (function will only process messages after lastScan)
+              const items = await extractActionItems(chat.id, 50);
+
+              if (!isMounted) return;
+
+              if (items && items.length > 0) {
+                // Filter and save to Firestore
+                const filteredItems = items.map((item: any) => ({
+                  ...item,
+                  owner: item.owner === 'null' ? undefined : item.owner,
+                  deadline: item.deadline === 'null' ? undefined : item.deadline,
+                }));
+
+                await actionItemsService.saveActionItems(user.uid!, chat.id, filteredItems);
+
+                if (isMounted) {
+                  totalItemsFound += filteredItems.length;
+                  console.log(`✅ Found ${filteredItems.length} new action items in ${chat.id}`);
+                }
+              }
+
+              // Update scan timestamp
+              await scanTracker.updateLastScanTimestamp(
+                user.uid!,
+                chat.id,
+                'actionItems',
+                latestMessageTime,
+                items?.length || 0
+              );
+
+              chatsScanned++;
+
+            } catch (error) {
+              if (isMounted) {
+                console.error(`Error extracting from chat ${chat.id}:`, error);
+              }
+            }
+          }));
+        }
+
+        if (isMounted) {
+          console.log(`✅ Scan complete! Scanned: ${chatsScanned}, Skipped: ${chatsSkipped}, Found: ${totalItemsFound} new action items`);
+        }
+      } catch (error) {
+        if (isMounted) {
+          console.error('Error scanning chats:', error);
+          Alert.alert('Error', 'Failed to scan chats for action items');
+        }
+      } finally {
+        if (isMounted) {
+          setScanning(false);
+        }
+      }
+    };
 
     const setupListener = async () => {
+      if (!isMounted) return;
+      
       try {
         const firestore = await getFirebaseFirestore();
+        
+        if (!isMounted) return;
+        
         const q = query(
           collection(firestore, 'actionItems'),
           where('userId', '==', user.uid)
         );
 
-        unsubscribe = onSnapshot(q, async (snapshot) => {
+        unsubscribe = onSnapshot(q, (snapshot) => {
+          if (!isMounted) return; // Don't process if unmounted
+          
           const items: ActionItemWithChat[] = [];
 
           snapshot.forEach((doc) => {
@@ -115,70 +186,97 @@ export default function ActionsScreen() {
             return 0;
           });
 
-          setAllActionItems(items);
-          setLoading(false);
-          console.log('📋 Loaded', items.length, 'action items');
-          
-          // If no items found and we have chats, trigger auto-scan
-          if (items.length === 0 && chats.length > 0 && !scanning) {
-            console.log('📋 No action items found, triggering auto-scan...');
-            await scanAllChats();
+          if (isMounted) {
+            setAllActionItems(items);
+            setLoading(false);
+            console.log('📋 Loaded', items.length, 'action items');
+            
+            // If no items found and we have chats, trigger auto-scan (only once)
+            if (items.length === 0 && chats.length > 0 && !hasScanned) {
+              console.log('📋 No action items found, triggering auto-scan...');
+              scanAllChats();
+            }
+            
+            // If manual rescan requested
+            if (shouldScan && isMounted) {
+              console.log('📋 Manual rescan requested...');
+              setShouldScan(false);
+              scanAllChats(true);
+            }
           }
         });
       } catch (error) {
-        console.error('Error setting up action items listener:', error);
-        setLoading(false);
+        if (isMounted) {
+          console.error('Error setting up action items listener:', error);
+          setLoading(false);
+        }
       }
     };
 
     setupListener();
 
     return () => {
+      isMounted = false; // Mark component as unmounted
       if (unsubscribe) {
         unsubscribe();
       }
     };
-  }, [user, chats]);
+  }, [user?.uid, chats.length, shouldScan]); // Use chats.length instead of chats to avoid unnecessary re-runs
 
-  const loadAllActions = async () => {
-    await scanAllChats();
+  const loadAllActions = () => {
+    setShouldScan(true);
   };
 
   const handleToggleItem = async (id: string) => {
-    const item = allActionItems.find(i => i.id === id);
-    if (!item) return;
-
-    const newStatus = item.status === 'completed' ? 'pending' : 'completed';
-
-    // Optimistic update
-    setAllActionItems(prev => prev.map(i =>
-      i.id === id
-        ? { ...i, status: newStatus }
-        : i
-    ));
-
-    // Update Firestore
     try {
-      await actionItemsService.updateActionItemStatus(
-        id,
-        newStatus,
-        item.chatId,
-        item.extractedFrom?.messageId
-      );
-    } catch (error) {
-      console.error('Error updating action item:', error);
-      // Revert on error
+      const item = allActionItems.find(i => i.id === id);
+      if (!item) {
+        console.warn('Action item not found:', id);
+        return;
+      }
+
+      const newStatus = item.status === 'completed' ? 'pending' : 'completed';
+
+      // Optimistic update
       setAllActionItems(prev => prev.map(i =>
         i.id === id
-          ? { ...i, status: item.status }
+          ? { ...i, status: newStatus }
           : i
       ));
-      Alert.alert('Error', 'Failed to update action item');
+
+      // Update Firestore
+      try {
+        await actionItemsService.updateActionItemStatus(
+          id,
+          newStatus,
+          item.chatId,
+          item.extractedFrom?.messageId
+        );
+        console.log('✅ Action item toggled:', id, '→', newStatus);
+      } catch (error) {
+        console.error('Error updating action item:', error);
+        // Revert on error
+        setAllActionItems(prev => prev.map(i =>
+          i.id === id
+            ? { ...i, status: item.status }
+            : i
+        ));
+        Alert.alert('Error', 'Failed to update action item. Please try again.');
+      }
+    } catch (error) {
+      console.error('Unexpected error in handleToggleItem:', error);
+      // Don't show alert for unexpected errors, just log them
     }
   };
 
   const handleItemPress = (chatId: string) => {
-    router.push(`/chats/${chatId}`);
+    try {
+      console.log('📱 Navigating to chat:', chatId);
+      router.push(`/chats/${chatId}`);
+    } catch (error) {
+      console.error('Navigation error:', error);
+      Alert.alert('Error', 'Failed to open chat. Please try again.');
+    }
   };
 
   const sections = [
@@ -193,8 +291,9 @@ export default function ActionsScreen() {
   ].filter(section => section.data.length > 0);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <View style={styles.container}>
+    <ErrorBoundary>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>All Actions</Text>
@@ -283,8 +382,9 @@ export default function ActionsScreen() {
             stickySectionHeadersEnabled={true}
           />
         )}
-      </View>
-    </SafeAreaView>
+        </View>
+      </SafeAreaView>
+    </ErrorBoundary>
   );
 }
 

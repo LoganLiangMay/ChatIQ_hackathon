@@ -179,12 +179,12 @@ Add to `functions/package.json`:
 
 **Step 1.1.3: Configure Firebase Config**
 ```bash
-firebase functions:config:set openai.api_key="sk-proj-YOUR_KEY_HERE"
+firebase functions:config:set openai.api_key="your_openai_api_key_here"
 ```
 
 For local development, create `functions/.env`:
 ```
-OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
+OPENAI_API_KEY=your_openai_api_key_here
 ```
 
 **Step 1.1.4: Create AI Functions** (Already Created ✅)

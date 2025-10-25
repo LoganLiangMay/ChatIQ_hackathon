@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Platform } from 'react-native';
 
 export default function TabsLayout() {
   return (
@@ -8,17 +9,14 @@ export default function TabsLayout() {
         tabBarActiveTintColor: '#007AFF',
         tabBarInactiveTintColor: '#8E8E93',
         headerShown: false, // Hide header for seamless iMessage-like design
+        tabBarShowLabel: false, // Hide text labels under icons
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopWidth: 0.5,
           borderTopColor: '#C6C6C8',
-          paddingTop: 8,
-          paddingBottom: 8,
-          height: 60,
-        },
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: '500',
+          paddingTop: 12,
+          paddingBottom: Platform.OS === 'ios' ? 28 : 12, // Extra padding for iPhone home indicator
+          height: Platform.OS === 'ios' ? 88 : 64, // Taller on iOS for safe area
         },
       }}
     >
@@ -26,8 +24,8 @@ export default function TabsLayout() {
         name="chats"
         options={{
           title: 'Chats',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubbles" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="chatbubbles" size={28} color={color} />
           ),
           href: '/chats',
         }}
@@ -36,41 +34,48 @@ export default function TabsLayout() {
         name="actions"
         options={{
           title: 'Actions',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="checkbox-outline" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="checkbox-outline" size={28} color={color} />
           ),
           href: '/actions',
+        }}
+      />
+      <Tabs.Screen
+        name="decisions"
+        options={{
+          title: 'Decisions',
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="git-branch-outline" size={28} color={color} />
+          ),
+          href: '/decisions',
         }}
       />
       <Tabs.Screen
         name="search"
         options={{
           title: 'Search',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="search" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="search" size={28} color={color} />
           ),
           href: null, // Hide from tabs, accessible via chats screen
         }}
       />
       <Tabs.Screen
-        name="chats/search"
+        name="ai-assistant"
         options={{
-          href: null, // Hide from tabs
-        }}
-      />
-      <Tabs.Screen
-        name="chats/[chatId]"
-        options={{
-          href: null, // Hide from tabs (individual chat screen)
-          tabBarStyle: { display: 'none' }, // Hide bottom tab bar in chat screen
+          title: 'AI Assistant',
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="sparkles" size={28} color={color} />
+          ),
+          href: '/ai-assistant',
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-circle" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="person-circle" size={28} color={color} />
           ),
         }}
       />

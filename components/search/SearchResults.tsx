@@ -1,7 +1,7 @@
 /**
  * SearchResults Component
  * Displays search results organized by category:
- * - Messages
+ * - Messages (with context preview)
  * - Chats
  * - Users
  */
@@ -9,17 +9,20 @@
 import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { SearchResult, MessageSearchResult, UserSearchResult } from '@/services/search/SearchService';
+import { SearchResult, UserSearchResult } from '@/services/search/SearchService';
 import { Chat } from '@/types/chat';
 import { formatTimestamp, getInitials } from '@/utils/formatters';
+import type { SearchResult as AISearchResult } from '@/services/ai/types';
+import { useState } from 'react';
 
 interface SearchResultsProps {
   results: SearchResult;
   searchQuery: string;
+  loading?: boolean;
   onUserSelect?: (user: UserSearchResult) => void;
 }
 
-export function SearchResults({ results, searchQuery, onUserSelect }: SearchResultsProps) {
+export function SearchResults({ results, searchQuery, loading, onUserSelect }: SearchResultsProps) {
   const router = useRouter();
   const hasResults = 
     results.messages.length > 0 || 
@@ -30,7 +33,17 @@ export function SearchResults({ results, searchQuery, onUserSelect }: SearchResu
     return (
       <View style={styles.emptyContainer}>
         <Ionicons name="search" size={64} color="#CCC" />
-        <Text style={styles.emptyText}>Search messages, chats, and users</Text>
+        <Text style={styles.emptyText}>Search messages by meaning...</Text>
+        <Text style={styles.emptySubtext}>Try "What did we decide about the API?"</Text>
+      </View>
+    );
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Ionicons name="hourglass-outline" size={64} color="#CCC" />
+        <Text style={styles.emptyText}>Searching...</Text>
       </View>
     );
   }
@@ -40,7 +53,7 @@ export function SearchResults({ results, searchQuery, onUserSelect }: SearchResu
       <View style={styles.emptyContainer}>
         <Ionicons name="sad-outline" size={64} color="#CCC" />
         <Text style={styles.emptyText}>No results found</Text>
-        <Text style={styles.emptySubtext}>Try a different search term</Text>
+        <Text style={styles.emptySubtext}>Try a different search term or adjust filters</Text>
       </View>
     );
   }
@@ -64,10 +77,10 @@ export function SearchResults({ results, searchQuery, onUserSelect }: SearchResu
         }
         if (item.type === 'message') {
           return (
-            <MessageResultItem
-              result={item.data as MessageSearchResult}
+            <AIMessageResultItem
+              result={item.data as AISearchResult}
               searchQuery={searchQuery}
-              onPress={() => router.push(`/(tabs)/chats/${(item.data as MessageSearchResult).message.chatId}`)}
+              onPress={() => router.push(`/(tabs)/chats/${(item.data as AISearchResult).chatId}`)}
             />
           );
         }
@@ -103,16 +116,16 @@ function SectionHeader({ title, count }: { title: string; count: number }) {
   );
 }
 
-function MessageResultItem({ 
+function AIMessageResultItem({ 
   result, 
   searchQuery, 
   onPress 
 }: { 
-  result: MessageSearchResult; 
+  result: AISearchResult; 
   searchQuery: string; 
   onPress: () => void;
 }) {
-  const { message, chatName } = result;
+  const [showContext, setShowContext] = useState(false);
   
   // Highlight search term in content
   const highlightText = (text: string, query: string) => {
@@ -128,20 +141,82 @@ function MessageResultItem({
     );
   };
 
+  const hasContext = result.context && (result.context.before.length > 0 || result.context.after.length > 0);
+
   return (
     <TouchableOpacity style={styles.resultItem} onPress={onPress}>
       <View style={styles.iconContainer}>
-        <Ionicons name="chatbubble-outline" size={24} color="#007AFF" />
+        {result.isPriority ? (
+          <Ionicons name="alert-circle" size={24} color="#FF3B30" />
+        ) : (
+          <Ionicons name="chatbubble-outline" size={24} color="#007AFF" />
+        )}
       </View>
       
       <View style={styles.resultContent}>
-        <Text style={styles.resultTitle}>{chatName}</Text>
-        <Text style={styles.resultSubtitle} numberOfLines={2}>
-          {highlightText(message.content, searchQuery)}
+        <View style={styles.resultHeader}>
+          <Text style={styles.resultTitle}>{result.chatName || 'Chat'}</Text>
+          {result.relevanceScore >= 0.8 && (
+            <View style={styles.relevanceBadge}>
+              <Ionicons name="star" size={12} color="#FFD700" />
+              <Text style={styles.relevanceText}>Highly relevant</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Context: Messages before */}
+        {showContext && hasContext && result.context!.before.length > 0 && (
+          <View style={styles.contextContainer}>
+            {result.context!.before.map((msg, idx) => (
+              <Text key={`before-${idx}`} style={styles.contextText} numberOfLines={1}>
+                <Text style={styles.contextSender}>{msg.sender}: </Text>
+                {msg.content}
+              </Text>
+            ))}
+          </View>
+        )}
+
+        {/* Main message */}
+        <Text style={styles.resultSubtitle} numberOfLines={showContext ? undefined : 2}>
+          <Text style={styles.mainMessageSender}>{result.senderName}: </Text>
+          {highlightText(result.content, searchQuery)}
         </Text>
-        <Text style={styles.resultTime}>
-          {message.senderName} · {formatTimestamp(message.timestamp)}
-        </Text>
+
+        {/* Context: Messages after */}
+        {showContext && hasContext && result.context!.after.length > 0 && (
+          <View style={styles.contextContainer}>
+            {result.context!.after.map((msg, idx) => (
+              <Text key={`after-${idx}`} style={styles.contextText} numberOfLines={1}>
+                <Text style={styles.contextSender}>{msg.sender}: </Text>
+                {msg.content}
+              </Text>
+            ))}
+          </View>
+        )}
+
+        <View style={styles.resultFooter}>
+          <Text style={styles.resultTime}>
+            {formatTimestamp(result.timestamp)}
+          </Text>
+          {hasContext && (
+            <TouchableOpacity 
+              onPress={(e) => {
+                e.stopPropagation();
+                setShowContext(!showContext);
+              }}
+              style={styles.contextToggle}
+            >
+              <Ionicons 
+                name={showContext ? 'chevron-up' : 'chevron-down'} 
+                size={16} 
+                color="#007AFF" 
+              />
+              <Text style={styles.contextToggleText}>
+                {showContext ? 'Hide' : 'Show'} context
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -290,5 +365,61 @@ const styles = StyleSheet.create({
   highlight: {
     backgroundColor: '#FFEB3B',
     fontWeight: '600',
+  },
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  relevanceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF9E6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    gap: 3,
+  },
+  relevanceText: {
+    fontSize: 10,
+    color: '#B8860B',
+    fontWeight: '600',
+  },
+  contextContainer: {
+    marginVertical: 6,
+    paddingLeft: 12,
+    borderLeftWidth: 2,
+    borderLeftColor: '#E5E5EA',
+  },
+  contextText: {
+    fontSize: 13,
+    color: '#888',
+    lineHeight: 18,
+    marginBottom: 2,
+  },
+  contextSender: {
+    fontWeight: '600',
+    color: '#666',
+  },
+  mainMessageSender: {
+    fontWeight: '600',
+    color: '#000',
+  },
+  resultFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  contextToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  contextToggleText: {
+    fontSize: 12,
+    color: '#007AFF',
+    fontWeight: '500',
   },
 });

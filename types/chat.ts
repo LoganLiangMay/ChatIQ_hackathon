@@ -26,6 +26,10 @@ export interface Chat {
   };
   createdAt: number;
   updatedAt: number;
+  // Project tracking fields
+  projectType?: 'group' | 'project'; // New: distinguish casual vs tracked
+  projectDescription?: string; // New: context for AI tracking
+  aiTrackingEnabled?: boolean; // New: opt-in for AI
 }
 
 export interface ChatListItem extends Chat {

@@ -18,9 +18,10 @@ interface ChatHeaderProps {
   participantCount?: number;
   onSummarize?: () => void;
   onExtractActions?: () => void;
+  onViewHistory?: () => void;
 }
 
-export function ChatHeader({ chatId, chatName, chatType, online, lastSeen, participantCount, onSummarize, onExtractActions }: ChatHeaderProps) {
+export function ChatHeader({ chatId, chatName, chatType, online, lastSeen, participantCount, onSummarize, onExtractActions, onViewHistory }: ChatHeaderProps) {
   const router = useRouter();
   
   const handleBack = () => {
@@ -81,6 +82,13 @@ export function ChatHeader({ chatId, chatName, chatType, online, lastSeen, parti
           </View>
         </View>
       </View>
+      
+      {/* AI Summary History Button */}
+      {onViewHistory && (
+        <TouchableOpacity onPress={onViewHistory} style={styles.historyButton} testID="history-button">
+          <Ionicons name="calendar-outline" size={20} color="#007AFF" />
+        </TouchableOpacity>
+      )}
       
       {/* AI Action Items Button */}
       {onExtractActions && (
@@ -163,6 +171,10 @@ const styles = StyleSheet.create({
   },
   onlineText: {
     color: '#34C759', // iOS green for online status
+  },
+  historyButton: {
+    padding: 8,
+    marginRight: 4,
   },
   actionButton: {
     padding: 8,
