@@ -48,13 +48,16 @@ export function MessageList({
     .reverse()
     .find(msg => msg.senderId === currentUserId);
   
+  // Reverse messages for inverted list (newest at top/bottom of screen)
+  const reversedMessages = [...messages].reverse();
+
   return (
     <FlatList
-      data={messages}
+      data={reversedMessages}
       keyExtractor={(item) => item.id}
       renderItem={({ item, index }) => {
         const isLastSentMessage = lastSentMessage && item.id === lastSentMessage.id;
-        
+
         return (
           <View>
             <MessageBubble
@@ -64,7 +67,7 @@ export function MessageList({
               isGroup={showSenderNames}
               showStatus={false} // Don't show checkmarks on individual messages
             />
-            
+
             {/* Show "Read [time]" below the last sent message only (iMessage style) */}
             {isLastSentMessage && item.senderId === currentUserId && (
               <View style={styles.readReceiptContainer}>
@@ -76,9 +79,10 @@ export function MessageList({
       }}
       contentContainerStyle={styles.listContent}
       showsVerticalScrollIndicator={false}
+      inverted={true} // Show newest messages at bottom (like iMessage)
       onEndReached={onEndReached}
       onEndReachedThreshold={0.1}
-      // Keep messages at bottom
+      // Keep messages at bottom when new ones arrive
       maintainVisibleContentPosition={{
         minIndexForVisible: 0,
       }}

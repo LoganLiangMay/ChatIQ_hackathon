@@ -1,9 +1,8 @@
 /**
  * SearchService
- * Handles search operations across:
- * - Messages (AI-powered semantic search via Firebase Functions)
- * - Chats (SQLite)
- * - Users (Firestore)
+ * Unified search service supporting two modes:
+ * - BASIC: Fast, local, iMessage-style search (FTS5 + category grouping)
+ * - AI: Advanced semantic search via Firebase Functions
  */
 
 import { db } from '@/services/database/sqlite';
@@ -13,6 +12,7 @@ import { Message } from '@/types/message';
 import { Chat } from '@/types/chat';
 import { aiService } from '@/services/ai/AIService';
 import type { SearchResult as AISearchResult } from '@/services/ai/types';
+import { basicSearchService, BasicSearchResult } from './BasicSearchService';
 
 export interface SearchResult {
   messages: AISearchResult[];
@@ -291,6 +291,56 @@ class SearchService {
     // Could store in AsyncStorage or SQLite
     // For now, just log
     console.log('Search query saved:', searchQuery);
+  }
+
+  /**
+   * BASIC SEARCH: Fast, local iMessage-style search
+   * Use this for inline search bar on chat list
+   */
+  async searchBasic(searchQuery: string, currentUserId: string): Promise<BasicSearchResult> {
+    return basicSearchService.searchAll(searchQuery, currentUserId);
+  }
+
+  /**
+   * In-conversation search (within a specific chat)
+   */
+  async searchInChat(chatId: string, searchQuery: string): Promise<(Message & { relevanceScore: number })[]> {
+    return basicSearchService.searchInChat(chatId, searchQuery);
+  }
+
+  /**
+   * Get search history
+   */
+  async getSearchHistory(): Promise<string[]> {
+    return basicSearchService.getSearchHistory();
+  }
+
+  /**
+   * Clear search history
+   */
+  async clearSearchHistory(): Promise<void> {
+    return basicSearchService.clearSearchHistory();
+  }
+
+  /**
+   * Get popular searches
+   */
+  async getPopularSearches(limit?: number): Promise<string[]> {
+    return basicSearchService.getPopularSearches(limit);
+  }
+
+  /**
+   * Get result counts for basic search
+   */
+  getBasicSearchCounts(result: BasicSearchResult) {
+    return basicSearchService.getResultCounts(result);
+  }
+
+  /**
+   * Check if basic search has results
+   */
+  hasBasicResults(result: BasicSearchResult): boolean {
+    return basicSearchService.hasResults(result);
   }
 }
 

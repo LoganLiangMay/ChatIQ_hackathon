@@ -24,7 +24,7 @@ export const detectBlockers = functions
         );
       }
 
-      const { chatId, limit = 30 } = data;
+      const { chatId, limit = 30, forceRefresh = false } = data;
 
       if (!chatId) {
         throw new functions.https.HttpsError(
@@ -34,6 +34,7 @@ export const detectBlockers = functions
       }
 
       const userId = context.auth.uid;
+      const firestore = admin.firestore();
 
       // Verify user has access to this chat
       const chatDoc = await admin.firestore()
@@ -56,8 +57,77 @@ export const detectBlockers = functions
         );
       }
 
+      // ===============================================
+      // 🚀 Smart Caching: Check for recent blocker analysis
+      // ===============================================
+      if (!forceRefresh) {
+        const dateKey = new Date().toISOString().split('T')[0];
+        const cacheRef = firestore
+          .collection('chats')
+          .doc(chatId)
+          .collection('blockers_cache')
+          .doc(dateKey);
+
+        const cachedDoc = await cacheRef.get();
+
+        if (cachedDoc.exists) {
+          const cachedData = cachedDoc.data();
+          const lastMessageTimestamp = cachedData?.lastMessageTimestamp;
+
+          // Get the latest message in the chat
+          const latestMessageSnap = await firestore
+            .collection('chats')
+            .doc(chatId)
+            .collection('messages')
+            .orderBy('timestamp', 'desc')
+            .limit(1)
+            .get();
+
+          if (!latestMessageSnap.empty) {
+            const latestMessage = latestMessageSnap.docs[0].data();
+            const latestMessageTime = latestMessage.timestamp;
+
+            // Normalize timestamps to numbers for comparison
+            const cachedTimestamp = typeof lastMessageTimestamp === 'object' && lastMessageTimestamp._seconds
+              ? lastMessageTimestamp._seconds * 1000 + Math.floor(lastMessageTimestamp._nanoseconds / 1000000)
+              : lastMessageTimestamp;
+
+            const currentTimestamp = typeof latestMessageTime === 'object' && latestMessageTime._seconds
+              ? latestMessageTime._seconds * 1000 + Math.floor(latestMessageTime._nanoseconds / 1000000)
+              : latestMessageTime;
+
+            // If no new messages since last analysis, return cached version
+            if (cachedTimestamp && currentTimestamp <= cachedTimestamp) {
+              functions.logger.info('✅ Returning cached blockers (no new messages)', {
+                chatId,
+                cachedDate: dateKey,
+                lastMessageTimestamp: cachedTimestamp,
+                latestMessageTime: currentTimestamp,
+              });
+
+              return {
+                blockers: cachedData.blockers || [],
+                chatId,
+                extractedAt: cachedData.extractedAt,
+                messageCount: cachedData.messageCount,
+                cached: true,
+              };
+            }
+
+            functions.logger.info('📝 New messages detected, analyzing for blockers', {
+              chatId,
+              lastCachedTimestamp: cachedTimestamp,
+              currentMessageTimestamp: currentTimestamp,
+            });
+          }
+        }
+      } else {
+        functions.logger.info('🔄 Force refresh requested, re-analyzing blockers', { chatId });
+      }
+      // ===============================================
+
       // Get recent messages
-      const messagesSnapshot = await admin.firestore()
+      const messagesSnapshot = await firestore
         .collection('chats')
         .doc(chatId)
         .collection('messages')
@@ -72,9 +142,14 @@ export const detectBlockers = functions
         return { blockers: [] };
       }
 
+      // Save newest message info BEFORE reversing (for cache tracking)
+      const newestMessage = messagesSnapshot.docs[0]; // DESC order, so first = newest
+      const newestMessageId = newestMessage.id;
+      const newestMessageTimestamp = newestMessage.data().timestamp;
+
       // Format messages for AI
       // Filter out images and empty messages (same logic as summarize.ts)
-      const messages = messagesSnapshot.docs.reverse().map(doc => {
+      const messages = messagesSnapshot.docs.slice().reverse().map(doc => {
         const data = doc.data();
 
         // Check for image first, then content (prevent "📷 [Image]" in AI analysis)
@@ -175,10 +250,48 @@ Return JSON array (empty array if no blockers found):
         extractedFrom: { messageId: b.messageId },
       }));
 
+      // ===============================================
+      // 💾 Auto-save to Firestore cache
+      // ===============================================
+      const extractedAt = Date.now();
+      try {
+        const dateKey = new Date().toISOString().split('T')[0];
+        const cacheRef = firestore
+          .collection('chats')
+          .doc(chatId)
+          .collection('blockers_cache')
+          .doc(dateKey);
+
+        const cacheData = {
+          blockers: enrichedBlockers,
+          chatId,
+          extractedAt,
+          messageCount: messages.length,
+          lastMessageId: newestMessageId,
+          lastMessageTimestamp: newestMessageTimestamp,
+          createdAt: Date.now(),
+          userId,
+        };
+
+        await cacheRef.set(cacheData, { merge: true });
+
+        console.log('✅ Blockers cached to Firestore', {
+          chatId,
+          date: dateKey,
+          blockersCount: enrichedBlockers.length,
+        });
+      } catch (cacheError: any) {
+        console.warn('⚠️ Failed to cache blockers (non-critical)', {
+          chatId,
+          error: cacheError.message,
+        });
+      }
+      // ===============================================
+
       return {
         blockers: enrichedBlockers,
         chatId,
-        extractedAt: Date.now(),
+        extractedAt,
         messageCount: messages.length,
       };
 

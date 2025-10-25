@@ -121,19 +121,21 @@ class AIService {
 
   /**
    * Summarize a conversation thread
-   * 
+   *
    * @param chatId - Chat to summarize
    * @param messageLimit - Number of recent messages to include (default: 50)
+   * @param forceRefresh - Force regeneration even if cached summary exists (default: false)
    * @returns Summary with key points and decisions
    */
   async summarizeThread(
     chatId: string,
-    messageLimit: number = 50
+    messageLimit: number = 50,
+    forceRefresh: boolean = false
   ): Promise<SummaryResult> {
     try {
       const functions = await this.getFunctionsInstance();
       const summarize = httpsCallable(functions, 'summarizeThread');
-      const result = await summarize({ chatId, messageLimit });
+      const result = await summarize({ chatId, messageLimit, forceRefresh });
       return result.data as SummaryResult;
     } catch (error: any) {
       console.error('Error summarizing thread:', error);
@@ -193,20 +195,26 @@ class AIService {
    *
    * @param chatId - Chat to analyze
    * @param messageLimit - Number of messages to scan (default: 100)
-   * @returns List of decisions with context
+   * @param forceRefresh - Force regeneration even if cached (default: false)
+   * @returns Full response with decisions, projects, and caching info
    */
   async trackDecisions(
     chatId: string,
-    messageLimit: number = 100
-  ): Promise<Decision[]> {
+    messageLimit: number = 100,
+    forceRefresh: boolean = false
+  ): Promise<{ decisions: Decision[]; projects?: any[]; cached?: boolean }> {
     try {
       const functions = await this.getFunctionsInstance();
       const extract = httpsCallable(functions, 'extractDecisions');
-      const result = await extract({ chatId, limit: messageLimit });
+      const result = await extract({ chatId, limit: messageLimit, forceRefresh });
       console.log('🔍 Raw function response:', JSON.stringify(result.data).substring(0, 200));
-      const data = result.data as { decisions: Decision[] };
-      console.log(`🔍 Extracted ${data.decisions?.length || 0} decisions from response`);
-      return data.decisions || [];
+      const data = result.data as { decisions: Decision[]; projects?: any[]; cached?: boolean };
+      console.log(`🔍 Extracted ${data.decisions?.length || 0} decisions from response${data.cached ? ' (cached)' : ''}`);
+      return {
+        decisions: data.decisions || [],
+        projects: data.projects,
+        cached: data.cached,
+      };
     } catch (error: any) {
       console.error('Error tracking decisions:', error);
       throw this.handleError(error);
@@ -218,23 +226,28 @@ class AIService {
    *
    * @param chatId - Chat to analyze
    * @param messageLimit - Number of messages to scan (default: 30)
-   * @returns List of blockers with severity
+   * @param forceRefresh - Force regeneration even if cached (default: false)
+   * @returns Full response with blockers and caching info
    */
   async detectBlockers(
     chatId: string,
-    messageLimit: number = 30
-  ): Promise<any[]> {
+    messageLimit: number = 30,
+    forceRefresh: boolean = false
+  ): Promise<{ blockers: any[]; cached?: boolean }> {
     try {
       console.log('🔍 [detectBlockers] Starting blocker detection for chat:', chatId);
       const functions = await this.getFunctionsInstance();
       console.log('🔍 [detectBlockers] Functions instance obtained');
       const detect = httpsCallable(functions, 'detectBlockers');
       console.log('🔍 [detectBlockers] Calling detectBlockers function...');
-      const result = await detect({ chatId, limit: messageLimit });
+      const result = await detect({ chatId, limit: messageLimit, forceRefresh });
       console.log('🔍 [detectBlockers] Function call successful');
-      const data = result.data as { blockers: any[] };
-      console.log(`🔍 [detectBlockers] Found ${data.blockers?.length || 0} blockers`);
-      return data.blockers || [];
+      const data = result.data as { blockers: any[]; cached?: boolean };
+      console.log(`🔍 [detectBlockers] Found ${data.blockers?.length || 0} blockers${data.cached ? ' (cached)' : ''}`);
+      return {
+        blockers: data.blockers || [],
+        cached: data.cached,
+      };
     } catch (error: any) {
       console.error('❌ [detectBlockers] Error:', error);
       console.error('❌ [detectBlockers] Error code:', error.code);

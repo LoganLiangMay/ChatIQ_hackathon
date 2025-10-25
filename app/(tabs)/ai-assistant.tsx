@@ -1,9 +1,13 @@
 import { View, Text, StyleSheet, SafeAreaView, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { hybridAgent } from '@/services/ai/HybridAgent';
 import { AgentMessage } from '@/services/ai/agent/AIAgent';
 import { useAuth } from '@/contexts/AuthContext';
+import { conversationService, ConversationSession } from '@/services/ai/ConversationService';
+import { ConversationHistoryModal } from '@/components/ai/ConversationHistoryModal';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 
 export default function AIAssistantScreen() {
   const { user } = useAuth();
@@ -11,6 +15,59 @@ export default function AIAssistantScreen() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [agentMode, setAgentMode] = useState<'auto' | 'client' | 'server'>('auto');
+  const [historyVisible, setHistoryVisible] = useState(false);
+  const [sessions, setSessions] = useState<ConversationSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
+  // Initialize conversation service and create new session on mount
+  useEffect(() => {
+    initializeConversations();
+  }, []);
+
+  // Refresh sessions when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      loadSessions();
+    }, [])
+  );
+
+  const initializeConversations = async () => {
+    await conversationService.initialize();
+    // Always create a new conversation on app load/screen mount
+    await createNewConversation();
+    loadSessions();
+  };
+
+  const loadSessions = () => {
+    const allSessions = conversationService.getSessions();
+    setSessions(allSessions);
+    setCurrentSessionId(conversationService.getCurrentSessionId());
+  };
+
+  const createNewConversation = async () => {
+    const newSession = await conversationService.createNewSession();
+    setMessages([]);
+    setCurrentSessionId(newSession.id);
+    loadSessions();
+  };
+
+  const loadSession = async (sessionId: string) => {
+    const session = await conversationService.loadSession(sessionId);
+    if (session) {
+      setMessages(session.messages);
+      setCurrentSessionId(session.id);
+    }
+  };
+
+  const deleteSession = async (sessionId: string) => {
+    await conversationService.deleteSession(sessionId);
+    loadSessions();
+
+    // If we deleted the current session, create a new one
+    if (sessionId === currentSessionId) {
+      await createNewConversation();
+    }
+  };
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
@@ -21,9 +78,13 @@ export default function AIAssistantScreen() {
     };
 
     // Add user message immediately
-    setMessages(prev => [...prev, userMessage]);
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     setInput('');
     setLoading(true);
+
+    // Save user message to conversation service
+    await conversationService.addMessage(userMessage);
 
     try {
       // Get hybrid agent response (auto-routes between client/server)
@@ -42,17 +103,24 @@ export default function AIAssistantScreen() {
         content: response.text,
       };
 
-      setMessages(prev => [...prev, assistantMessage]);
+      const finalMessages = [...updatedMessages, assistantMessage];
+      setMessages(finalMessages);
+
+      // Save assistant message to conversation service
+      await conversationService.updateMessages(finalMessages);
     } catch (error: any) {
       console.error('Agent error:', error);
       // Add error message
-      setMessages(prev => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: `Sorry, I encountered an error: ${error.message}`,
-        },
-      ]);
+      const errorMessage: AgentMessage = {
+        role: 'assistant',
+        content: `Sorry, I encountered an error: ${error.message}`,
+      };
+
+      const finalMessages = [...updatedMessages, errorMessage];
+      setMessages(finalMessages);
+
+      // Save error message to conversation service
+      await conversationService.updateMessages(finalMessages);
     } finally {
       setLoading(false);
     }
@@ -130,11 +198,16 @@ export default function AIAssistantScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
+            <TouchableOpacity onPress={() => setHistoryVisible(true)} style={styles.historyButton}>
+              <Ionicons name="menu" size={28} color="#007AFF" />
+            </TouchableOpacity>
             <Ionicons name="sparkles" size={28} color="#007AFF" />
             <Text style={styles.headerTitle}>AI Assistant</Text>
           </View>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>BETA</Text>
+          <View style={styles.headerRight}>
+            <TouchableOpacity onPress={createNewConversation} style={styles.newChatButton}>
+              <Ionicons name="create-outline" size={24} color="#007AFF" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -191,6 +264,17 @@ export default function AIAssistantScreen() {
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
+
+        {/* Conversation History Modal */}
+        <ConversationHistoryModal
+          visible={historyVisible}
+          sessions={sessions}
+          currentSessionId={currentSessionId}
+          onClose={() => setHistoryVisible(false)}
+          onSelectSession={loadSession}
+          onNewConversation={createNewConversation}
+          onDeleteSession={deleteSession}
+        />
       </View>
     </SafeAreaView>
   );
@@ -217,6 +301,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  historyButton: {
+    padding: 4,
+  },
+  newChatButton: {
+    padding: 4,
   },
   headerTitle: {
     fontSize: 28,

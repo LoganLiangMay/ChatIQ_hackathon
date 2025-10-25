@@ -176,22 +176,7 @@ export default function ChatsScreen() {
             </TouchableOpacity>
           </View>
         </View>
-        
-        {/* Smart Search Bar */}
-        <View style={styles.searchBarContainer}>
-          <TouchableOpacity 
-            style={styles.searchBarTouchable}
-            onPress={handleSearchPress}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="search" size={20} color="#8E8E93" />
-            <Text style={styles.searchBarPlaceholder}>
-              Search by meaning...
-            </Text>
-            <Ionicons name="sparkles" size={16} color="#007AFF" />
-          </TouchableOpacity>
-        </View>
-        
+
         {/* Chat List with Urgent Section */}
         {chats.length === 0 ? (
           <View style={styles.emptyContainer}>
@@ -380,27 +365,6 @@ const styles = StyleSheet.create({
   },
   urgentSectionHeaderText: {
     color: '#FF3B30',
-  },
-  searchBarContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#FFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5EA',
-  },
-  searchBarTouchable: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F2F2F7',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  searchBarPlaceholder: {
-    flex: 1,
-    fontSize: 16,
-    color: '#8E8E93',
   },
   searchModalContainer: {
     flex: 1,

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -35,14 +36,13 @@ interface SummaryHistoryProps {
 }
 
 /**
- * Summary History Component
- * 
- * Displays historical daily summaries for a chat:
- * - Timeline view (most recent first)
- * - Date headers with day of week
- * - Expandable summary cards
- * - Auto/manual generation indicators
- * - Message count and participant info
+ * Minimal Summary History Component
+ *
+ * Clean timeline of daily summaries with:
+ * - Smooth animations
+ * - Card-based layout
+ * - Expandable summaries
+ * - Minimal visual clutter
  */
 export function SummaryHistory({ visible, chatId, chatName, onClose }: SummaryHistoryProps) {
   const [summaries, setSummaries] = useState<DailySummary[]>([]);
@@ -65,10 +65,10 @@ export function SummaryHistory({ visible, chatId, chatName, onClose }: SummaryHi
     try {
       const functions = getFunctions();
       const getChatSummaries = httpsCallable(functions, 'getChatSummaries');
-      
+
       const result = await getChatSummaries({ chatId, limit: 30 });
       const data = result.data as { summaries: DailySummary[] };
-      
+
       setSummaries(data.summaries || []);
     } catch (err: any) {
       console.error('Error loading summaries:', err);
@@ -84,17 +84,14 @@ export function SummaryHistory({ visible, chatId, chatName, onClose }: SummaryHi
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    // Check if today
     if (date.toDateString() === today.toDateString()) {
       return 'Today';
     }
 
-    // Check if yesterday
     if (date.toDateString() === yesterday.toDateString()) {
       return 'Yesterday';
     }
 
-    // Format as "Mon, Jan 15"
     const options: Intl.DateTimeFormatOptions = {
       weekday: 'short',
       month: 'short',
@@ -107,10 +104,6 @@ export function SummaryHistory({ visible, chatId, chatName, onClose }: SummaryHi
     setExpandedSummary(expandedSummary === summaryId ? null : summaryId);
   };
 
-  const getStatusColor = (generatedBy: 'auto' | 'manual'): string => {
-    return generatedBy === 'auto' ? '#34C759' : '#007AFF';
-  };
-
   return (
     <Modal
       visible={visible}
@@ -121,28 +114,27 @@ export function SummaryHistory({ visible, chatId, chatName, onClose }: SummaryHi
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={28} color="#007AFF" />
+          <TouchableOpacity onPress={onClose} style={styles.backButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="close" size={28} color="#8E8E93" />
           </TouchableOpacity>
-          <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Summary History</Text>
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>History</Text>
             {chatName && <Text style={styles.headerSubtitle}>{chatName}</Text>}
           </View>
           <View style={styles.headerRight} />
         </View>
 
-        {/* Loading State */}
+        {/* Content */}
         {loading && (
-          <View style={styles.loadingContainer}>
+          <View style={styles.centerContent}>
             <ActivityIndicator size="large" color="#007AFF" />
-            <Text style={styles.loadingText}>Loading summaries...</Text>
+            <Text style={styles.loadingText}>Loading...</Text>
           </View>
         )}
 
-        {/* Error State */}
         {error && !loading && (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorIcon}>⚠️</Text>
+          <View style={styles.centerContent}>
+            <Ionicons name="alert-circle-outline" size={48} color="#FF3B30" />
             <Text style={styles.errorText}>{error}</Text>
             <TouchableOpacity style={styles.retryButton} onPress={loadSummaries}>
               <Text style={styles.retryButtonText}>Retry</Text>
@@ -150,87 +142,37 @@ export function SummaryHistory({ visible, chatId, chatName, onClose }: SummaryHi
           </View>
         )}
 
-        {/* Empty State */}
         {!loading && !error && summaries.length === 0 && (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📝</Text>
+          <View style={styles.centerContent}>
+            <Ionicons name="document-text-outline" size={64} color="#D1D1D6" />
             <Text style={styles.emptyTitle}>No Summaries Yet</Text>
             <Text style={styles.emptyText}>
-              Daily summaries will appear here automatically, or you can generate one manually.
+              Summaries will appear here as conversations happen.
             </Text>
           </View>
         )}
 
-        {/* Summaries Timeline */}
         {!loading && !error && summaries.length > 0 && (
-          <ScrollView style={styles.summariesList} showsVerticalScrollIndicator={true}>
-            {summaries.map((summary) => (
-              <View key={summary.id} style={styles.summaryCard}>
-                {/* Date Header */}
-                <View style={styles.dateHeader}>
-                  <View style={styles.dateLeft}>
-                    <Text style={styles.dateText}>{formatDate(summary.date)}</Text>
-                    <Text style={styles.messagCountText}>
-                      {summary.messageCount} messages
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      { backgroundColor: getStatusColor(summary.generatedBy) + '20' },
-                    ]}
-                  >
-                    <Ionicons
-                      name={summary.generatedBy === 'auto' ? 'time-outline' : 'person-outline'}
-                      size={14}
-                      color={getStatusColor(summary.generatedBy)}
-                    />
-                    <Text
-                      style={[
-                        styles.statusText,
-                        { color: getStatusColor(summary.generatedBy) },
-                      ]}
-                    >
-                      {summary.generatedBy === 'auto' ? 'Auto' : 'Manual'}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Summary Preview/Full */}
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => toggleExpand(summary.id)}
-                >
-                  <Text
-                    style={styles.summaryText}
-                    numberOfLines={expandedSummary === summary.id ? undefined : 3}
-                  >
-                    {summary.summary}
-                  </Text>
-                  
-                  {summary.summary.length > 150 && (
-                    <Text style={styles.expandText}>
-                      {expandedSummary === summary.id ? 'Show less' : 'Show more'}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-
-                {/* Participants */}
-                {summary.participants.length > 0 && (
-                  <View style={styles.participantsContainer}>
-                    <Ionicons name="people-outline" size={14} color="#8E8E93" />
-                    <Text style={styles.participantsText}>
-                      {summary.participants.join(', ')}
-                    </Text>
-                  </View>
-                )}
-              </View>
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {summaries.map((summary, index) => (
+              <SummaryCard
+                key={summary.id}
+                summary={summary}
+                isExpanded={expandedSummary === summary.id}
+                onToggle={() => toggleExpand(summary.id)}
+                formatDate={formatDate}
+                index={index}
+              />
             ))}
 
-            {/* End Marker */}
-            <View style={styles.endMarker}>
-              <Text style={styles.endMarkerText}>
-                Showing last {summaries.length} {summaries.length === 1 ? 'day' : 'days'}
+            {/* End Indicator */}
+            <View style={styles.endIndicator}>
+              <Text style={styles.endText}>
+                {summaries.length} {summaries.length === 1 ? 'summary' : 'summaries'}
               </Text>
             </View>
           </ScrollView>
@@ -240,10 +182,127 @@ export function SummaryHistory({ visible, chatId, chatName, onClose }: SummaryHi
   );
 }
 
+/**
+ * Individual Summary Card Component
+ */
+function SummaryCard({
+  summary,
+  isExpanded,
+  onToggle,
+  formatDate,
+  index,
+}: {
+  summary: DailySummary;
+  isExpanded: boolean;
+  onToggle: () => void;
+  formatDate: (date: string) => string;
+  index: number;
+}) {
+  const fadeAnim = React.useRef(new Animated.Value(0)).current;
+  const scaleAnim = React.useRef(new Animated.Value(0.9)).current;
+
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        delay: index * 50,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        delay: index * 50,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }),
+    ]).start();
+  }, []);
+
+  const isLongSummary = summary.summary.length > 200;
+
+  return (
+    <Animated.View
+      style={[
+        styles.card,
+        {
+          opacity: fadeAnim,
+          transform: [{ scale: scaleAnim }],
+        },
+      ]}
+    >
+      {/* Date and Metadata */}
+      <View style={styles.cardHeader}>
+        <View style={styles.dateRow}>
+          <Text style={styles.dateText}>{formatDate(summary.date)}</Text>
+          <Text style={styles.messageCount}>{summary.messageCount} msg</Text>
+        </View>
+        <View
+          style={[
+            styles.badge,
+            {
+              backgroundColor:
+                summary.generatedBy === 'auto' ? '#34C75915' : '#007AFF15',
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.badgeText,
+              {
+                color: summary.generatedBy === 'auto' ? '#34C759' : '#007AFF',
+              },
+            ]}
+          >
+            {summary.generatedBy === 'auto' ? 'Auto' : 'Manual'}
+          </Text>
+        </View>
+      </View>
+
+      {/* Summary Text */}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={onToggle}
+        disabled={!isLongSummary}
+      >
+        <Text
+          style={styles.summaryText}
+          numberOfLines={isExpanded ? undefined : 4}
+        >
+          {summary.summary}
+        </Text>
+        {isLongSummary && (
+          <View style={styles.expandButton}>
+            <Text style={styles.expandText}>
+              {isExpanded ? 'Show less' : 'Show more'}
+            </Text>
+            <Ionicons
+              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color="#007AFF"
+            />
+          </View>
+        )}
+      </TouchableOpacity>
+
+      {/* Participants (only show if expanded or few participants) */}
+      {summary.participants.length > 0 &&
+        (isExpanded || summary.participants.length <= 3) && (
+          <View style={styles.participantsRow}>
+            <Ionicons name="people-outline" size={14} color="#8E8E93" />
+            <Text style={styles.participantsText} numberOfLines={1}>
+              {summary.participants.join(', ')}
+            </Text>
+          </View>
+        )}
+    </Animated.View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: '#F2F2F7',
   },
   header: {
     flexDirection: 'row',
@@ -251,15 +310,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 12,
+    paddingBottom: 16,
     backgroundColor: '#FFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E5EA',
   },
   backButton: {
-    padding: 4,
+    width: 40,
   },
-  headerTitleContainer: {
+  headerCenter: {
     flex: 1,
     alignItems: 'center',
   },
@@ -267,6 +326,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: '#000',
+    letterSpacing: 0.3,
   },
   headerSubtitle: {
     fontSize: 13,
@@ -274,60 +334,42 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   headerRight: {
-    width: 36, // Same as back button for centering
+    width: 40,
   },
-  loadingContainer: {
+  centerContent: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
+    justifyContent: 'center',
+    paddingHorizontal: 40,
   },
   loadingText: {
     marginTop: 16,
-    fontSize: 16,
-    color: '#666',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 40,
-  },
-  errorIcon: {
-    fontSize: 48,
-    marginBottom: 16,
+    fontSize: 15,
+    color: '#8E8E93',
   },
   errorText: {
-    fontSize: 16,
+    marginTop: 16,
+    fontSize: 15,
     color: '#FF3B30',
     textAlign: 'center',
     marginBottom: 24,
   },
   retryButton: {
-    backgroundColor: '#007AFF',
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 8,
+    backgroundColor: '#007AFF',
+    borderRadius: 12,
   },
   retryButtonText: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 40,
-  },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: 16,
   },
   emptyTitle: {
     fontSize: 20,
     fontWeight: '600',
     color: '#000',
+    marginTop: 16,
     marginBottom: 8,
   },
   emptyText: {
@@ -336,85 +378,89 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
-  summariesList: {
+  scrollView: {
     flex: 1,
   },
-  summaryCard: {
-    backgroundColor: '#FFF',
-    marginHorizontal: 16,
-    marginTop: 16,
+  scrollContent: {
     padding: 16,
-    borderRadius: 12,
+  },
+  card: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 2,
   },
-  dateHeader: {
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
   },
-  dateLeft: {
+  dateRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   dateText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#000',
   },
-  messagCountText: {
+  messageCount: {
     fontSize: 13,
     color: '#8E8E93',
   },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
+  badge: {
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-    gap: 4,
   },
-  statusText: {
+  badgeText: {
     fontSize: 12,
     fontWeight: '600',
   },
   summaryText: {
     fontSize: 15,
-    lineHeight: 22,
+    lineHeight: 24,
     color: '#000',
-    marginBottom: 8,
+    letterSpacing: 0.2,
+  },
+  expandButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
   },
   expandText: {
     fontSize: 14,
     color: '#007AFF',
     fontWeight: '500',
-    marginTop: 4,
   },
-  participantsContainer: {
+  participantsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
     gap: 6,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E5E5EA',
   },
   participantsText: {
     fontSize: 13,
     color: '#8E8E93',
+    flex: 1,
   },
-  endMarker: {
+  endIndicator: {
     alignItems: 'center',
     paddingVertical: 24,
   },
-  endMarkerText: {
+  endText: {
     fontSize: 13,
     color: '#8E8E93',
   },
 });
-

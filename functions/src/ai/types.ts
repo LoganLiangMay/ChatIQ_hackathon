@@ -4,6 +4,7 @@ export interface SummarizeThreadRequest {
   chatId: string;
   userId: string;
   messageLimit?: number; // Default: 50
+  forceRefresh?: boolean; // Default: false - set to true to bypass cache
 }
 
 export interface SummarizeThreadResponse {
@@ -14,6 +15,7 @@ export interface SummarizeThreadResponse {
     end: number;
   };
   participants: string[];
+  cached?: boolean; // True if returned from cache instead of regenerating
 }
 
 export interface ExtractActionsRequest {
@@ -72,7 +74,19 @@ export interface Decision {
 
 export interface TrackDecisionsResponse {
   decisions: Decision[];
+  projects?: any[]; // Optional projects data
+  chatId: string;
+  extractedAt: number;
   messageCount: number;
+  cached?: boolean; // True if returned from cache instead of regenerating
+}
+
+export interface DetectBlockersResponse {
+  blockers: any[];
+  chatId: string;
+  extractedAt: number;
+  messageCount: number;
+  cached?: boolean; // True if returned from cache instead of regenerating
 }
 
 export interface OpenAIMessage {

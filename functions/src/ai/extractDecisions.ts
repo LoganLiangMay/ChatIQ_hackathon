@@ -26,7 +26,7 @@ export const extractDecisions = functions
       );
     }
 
-    const { chatId, limit = 30 } = data; // Reduced from 50 to 30 for faster processing
+    const { chatId, limit = 30, forceRefresh = false } = data;
 
     if (!chatId) {
       throw new functions.https.HttpsError(
@@ -36,6 +36,7 @@ export const extractDecisions = functions
     }
 
     const userId = context.auth.uid;
+    const firestore = admin.firestore();
 
     // Verify user has access to this chat
     const chatDoc = await admin.firestore()
@@ -58,8 +59,78 @@ export const extractDecisions = functions
       );
     }
 
+    // ===============================================
+    // 🚀 Smart Caching: Check for recent analysis
+    // ===============================================
+    if (!forceRefresh) {
+      const dateKey = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const cacheRef = firestore
+        .collection('chats')
+        .doc(chatId)
+        .collection('decisions_cache')
+        .doc(dateKey);
+
+      const cachedDoc = await cacheRef.get();
+
+      if (cachedDoc.exists) {
+        const cachedData = cachedDoc.data();
+        const lastMessageTimestamp = cachedData?.lastMessageTimestamp;
+
+        // Get the latest message in the chat
+        const latestMessageSnap = await firestore
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .orderBy('timestamp', 'desc')
+          .limit(1)
+          .get();
+
+        if (!latestMessageSnap.empty) {
+          const latestMessage = latestMessageSnap.docs[0].data();
+          const latestMessageTime = latestMessage.timestamp;
+
+          // Normalize timestamps to numbers for comparison
+          const cachedTimestamp = typeof lastMessageTimestamp === 'object' && lastMessageTimestamp._seconds
+            ? lastMessageTimestamp._seconds * 1000 + Math.floor(lastMessageTimestamp._nanoseconds / 1000000)
+            : lastMessageTimestamp;
+
+          const currentTimestamp = typeof latestMessageTime === 'object' && latestMessageTime._seconds
+            ? latestMessageTime._seconds * 1000 + Math.floor(latestMessageTime._nanoseconds / 1000000)
+            : latestMessageTime;
+
+          // If no new messages since last analysis, return cached version
+          if (cachedTimestamp && currentTimestamp <= cachedTimestamp) {
+            functions.logger.info('✅ Returning cached decisions (no new messages)', {
+              chatId,
+              cachedDate: dateKey,
+              lastMessageTimestamp: cachedTimestamp,
+              latestMessageTime: currentTimestamp,
+            });
+
+            return {
+              decisions: cachedData.decisions || [],
+              projects: cachedData.projects || [],
+              chatId,
+              extractedAt: cachedData.extractedAt,
+              messageCount: cachedData.messageCount,
+              cached: true, // Flag to indicate cached result
+            };
+          }
+
+          functions.logger.info('📝 New messages detected, generating fresh analysis', {
+            chatId,
+            lastCachedTimestamp: cachedTimestamp,
+            currentMessageTimestamp: currentTimestamp,
+          });
+        }
+      }
+    } else {
+      functions.logger.info('🔄 Force refresh requested, regenerating decisions', { chatId });
+    }
+    // ===============================================
+
     // Get recent messages from the chat
-    const messagesSnapshot = await admin.firestore()
+    const messagesSnapshot = await firestore
       .collection('chats')
       .doc(chatId)
       .collection('messages')
@@ -74,11 +145,16 @@ export const extractDecisions = functions
       return { decisions: [], projects: [] };
     }
 
+    // Save newest message info BEFORE reversing (for cache tracking)
+    const newestMessage = messagesSnapshot.docs[0]; // DESC order, so first = newest
+    const newestMessageId = newestMessage.id;
+    const newestMessageTimestamp = newestMessage.data().timestamp;
+
     // Format messages for AI
     // Filter out images and empty messages (same logic as summarize.ts)
     console.log(`📝 Total docs in snapshot: ${messagesSnapshot.docs.length}`);
 
-    const allDocs = messagesSnapshot.docs.reverse(); // Chronological order
+    const allDocs = messagesSnapshot.docs.slice().reverse(); // Create copy to avoid mutating original
     console.log(`📝 After reverse: ${allDocs.length}`);
 
     const messages = allDocs.map(doc => {
@@ -229,11 +305,51 @@ export const extractDecisions = functions
       participants: participantNames,
     }));
 
+    // ===============================================
+    // 💾 Auto-save to Firestore cache
+    // ===============================================
+    const extractedAt = Date.now();
+    try {
+      const dateKey = new Date().toISOString().split('T')[0];
+      const cacheRef = firestore
+        .collection('chats')
+        .doc(chatId)
+        .collection('decisions_cache')
+        .doc(dateKey);
+
+      const cacheData = {
+        decisions: enrichedDecisions,
+        projects: enrichedProjects,
+        chatId,
+        extractedAt,
+        messageCount: messages.length,
+        lastMessageId: newestMessageId,
+        lastMessageTimestamp: newestMessageTimestamp,
+        createdAt: Date.now(),
+        userId,
+      };
+
+      await cacheRef.set(cacheData, { merge: true });
+
+      console.log('✅ Decisions cached to Firestore', {
+        chatId,
+        date: dateKey,
+        decisionsCount: enrichedDecisions.length,
+        projectsCount: enrichedProjects.length,
+      });
+    } catch (cacheError: any) {
+      console.warn('⚠️ Failed to cache decisions (non-critical)', {
+        chatId,
+        error: cacheError.message,
+      });
+    }
+    // ===============================================
+
     return {
       decisions: enrichedDecisions,
       projects: enrichedProjects,
       chatId,
-      extractedAt: Date.now(),
+      extractedAt,
       messageCount: messages.length,
     };
 

@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { View, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, KeyboardAvoidingView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { mediumHaptic, successHaptic, errorHaptic } from '@/utils/haptics';
 
@@ -18,16 +19,17 @@ interface MessageInputProps {
   onTypingStop?: () => void;
 }
 
-export function MessageInput({ 
+export function MessageInput({
   onSendMessage,
   onSendImage,
-  disabled = false, 
+  disabled = false,
   sending = false,
   onTypingStart,
-  onTypingStop 
+  onTypingStop
 }: MessageInputProps) {
   const [text, setText] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
+  const insets = useSafeAreaInsets();
   
   const handleTextChange = (newText: string) => {
     setText(newText);
@@ -164,7 +166,7 @@ export function MessageInput({
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={0}
     >
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 8) }]}>
         {/* Image button */}
         <TouchableOpacity
           style={styles.imageButton}
@@ -216,7 +218,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: 8,
     paddingTop: 6,
-    paddingBottom: Platform.OS === 'ios' ? 8 : 6, // Minimal padding for compact keyboard layout
+    // paddingBottom handled dynamically with safe area insets
     backgroundColor: '#FFF',
     borderTopWidth: 1,
     borderTopColor: '#E5E5EA',

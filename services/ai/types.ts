@@ -15,6 +15,7 @@ export interface SummaryResult {
     end: number;
   };
   participants: string[];
+  cached?: boolean; // True if returned from cache instead of regenerating
 }
 
 export interface ActionItem {
@@ -142,6 +143,24 @@ export interface Blocker {
   relatedProject?: string;
   timestamp: number;
   extractedFrom: { messageId: string };
+}
+
+// Response types with caching support
+export interface DecisionsResponse {
+  decisions: Decision[];
+  projects?: Project[];
+  chatId: string;
+  extractedAt: number;
+  messageCount: number;
+  cached?: boolean; // True if returned from cache
+}
+
+export interface BlockersResponse {
+  blockers: Blocker[];
+  chatId: string;
+  extractedAt: number;
+  messageCount: number;
+  cached?: boolean; // True if returned from cache
 }
 
 // Visualization data types

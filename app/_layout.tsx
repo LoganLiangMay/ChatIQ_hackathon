@@ -10,6 +10,7 @@ import { ErrorBoundary } from '@/components/error/ErrorBoundary';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { ErrorMessage } from '@/components/ui/ErrorMessage';
 import { MessageBanner } from '@/components/notifications/MessageBanner';
+import { IQTHandler } from '@/components/iqt/IQTHandler';
 import { initializeFirebase } from '@/services/firebase/config';
 import { initializeDatabase } from '@/services/database/sqlite';
 import { networkMonitor } from '@/services/network/NetworkMonitor';
@@ -186,6 +187,9 @@ export default function RootLayout() {
               onDismiss={() => setBannerVisible(false)}
             />
           )}
+
+          {/* IQT Mode handler */}
+          <IQTHandler />
 
           <Stack
             screenOptions={{

@@ -195,7 +195,7 @@ export class HybridAgent {
         userId: options.userId,
         chatId: options.chatId,
         queryType: complexity === 'rag' || complexity === 'knowledge' ? 'rag' : 'general',
-        conversationHistory: conversationHistory.slice(-5), // Last 5 messages for context
+        conversationHistory: conversationHistory.slice(-10), // Last 10 messages for better context
       });
 
       const data = result.data as any;

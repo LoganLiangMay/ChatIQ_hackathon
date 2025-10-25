@@ -12,7 +12,13 @@ export default function ChatsLayout() {
       }}
     >
       <Stack.Screen name="index" />
-      <Stack.Screen name="[chatId]" />
+      <Stack.Screen
+        name="[chatId]"
+        options={{
+          animation: 'slide_from_right',
+          animationDuration: 200, // Faster transition
+        }}
+      />
       <Stack.Screen name="search" />
     </Stack>
   );

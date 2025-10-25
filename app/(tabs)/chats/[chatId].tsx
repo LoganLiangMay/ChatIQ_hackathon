@@ -34,29 +34,29 @@ export default function ChatScreen() {
   const [otherUserId, setOtherUserId] = useState<string | undefined>(undefined);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [showSummaryHistory, setShowSummaryHistory] = useState(false);
-  
+
   const { messages, loading, sending, sendMessage, sendImage, markAllAsRead } = useMessages(
     chatId || '',
     user?.uid || ''
   );
-  
+
   // Get other user's presence (for direct chats)
   const { online, lastSeen } = usePresence(otherUserId);
-  
+
   // Typing indicators
   const { typingUsers, startTyping, stopTyping } = useTyping(
     chatId || '',
     user?.uid || '',
     user?.displayName || 'Unknown'
   );
-  
+
   // AI features
   const { summarizeThread, extractActionItems, loading: aiLoading, error: aiError } = useAI();
   const [summaryData, setSummaryData] = useState<any>(null);
   const [showActionItemsModal, setShowActionItemsModal] = useState(false);
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [lastActionItemsCheck, setLastActionItemsCheck] = useState<number>(0); // Track when we last extracted action items
-  
+
   // Load chat details
   useEffect(() => {
     if (!chatId || !user) return;
@@ -283,7 +283,7 @@ export default function ChatScreen() {
   }
   
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -299,7 +299,6 @@ export default function ChatScreen() {
           participantCount={chat?.participants.length}
           onSummarize={handleSummarize}
           onExtractActions={handleExtractActions}
-          onViewHistory={() => setShowSummaryHistory(true)}
         />
         
         {/* Offline Banner */}

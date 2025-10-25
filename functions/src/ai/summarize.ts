@@ -25,7 +25,7 @@ export const summarizeThread = functions.https.onCall(
       );
     }
 
-    const { chatId, messageLimit = 50 } = data;
+    const { chatId, messageLimit = 50, forceRefresh = false } = data;
 
     // Validate input
     if (!chatId || typeof chatId !== 'string') {
@@ -43,7 +43,7 @@ export const summarizeThread = functions.https.onCall(
 
       // Verify user is a participant (security check)
       const chatDoc = await firestore.collection('chats').doc(chatId).get();
-      
+
       if (!chatDoc.exists) {
         throw new functions.https.HttpsError('not-found', 'Chat not found');
       }
@@ -57,6 +57,74 @@ export const summarizeThread = functions.https.onCall(
           'User is not a participant in this chat'
         );
       }
+
+      // ===============================================
+      // 🚀 Smart Caching: Check for recent summary
+      // ===============================================
+      if (!forceRefresh) {
+        const latestSummary = await firestore
+          .collection('chats')
+          .doc(chatId)
+          .collection('summaries')
+          .orderBy('updatedAt', 'desc')
+          .limit(1)
+          .get();
+
+        if (!latestSummary.empty) {
+          const cachedSummary = latestSummary.docs[0].data();
+          const lastMessageTimestamp = cachedSummary.lastMessageTimestamp;
+
+          // Get the latest message in the chat
+          const latestMessageSnap = await firestore
+            .collection('chats')
+            .doc(chatId)
+            .collection('messages')
+            .orderBy('timestamp', 'desc')
+            .limit(1)
+            .get();
+
+          if (!latestMessageSnap.empty) {
+            const latestMessage = latestMessageSnap.docs[0].data();
+            const latestMessageTime = latestMessage.timestamp;
+
+            // Normalize timestamps to numbers for comparison
+            const cachedTimestamp = typeof lastMessageTimestamp === 'object' && lastMessageTimestamp._seconds
+              ? lastMessageTimestamp._seconds * 1000 + Math.floor(lastMessageTimestamp._nanoseconds / 1000000)
+              : lastMessageTimestamp;
+
+            const currentTimestamp = typeof latestMessageTime === 'object' && latestMessageTime._seconds
+              ? latestMessageTime._seconds * 1000 + Math.floor(latestMessageTime._nanoseconds / 1000000)
+              : latestMessageTime;
+
+            // If no new messages since last summary, return cached version
+            if (cachedTimestamp && currentTimestamp <= cachedTimestamp) {
+              functions.logger.info('Returning cached summary (no new messages)', {
+                chatId,
+                cachedSummaryDate: cachedSummary.date,
+                lastMessageTimestamp: cachedTimestamp,
+                latestMessageTime: currentTimestamp,
+              });
+
+              return {
+                summary: cachedSummary.summary,
+                messageCount: cachedSummary.messageCount,
+                timeRange: cachedSummary.timeRange,
+                participants: cachedSummary.participants,
+                cached: true, // Flag to indicate cached result
+              };
+            }
+
+            functions.logger.info('New messages detected, generating fresh summary', {
+              chatId,
+              lastCachedTimestamp: cachedTimestamp,
+              currentMessageTimestamp: currentTimestamp,
+            });
+          }
+        }
+      } else {
+        functions.logger.info('Force refresh requested, regenerating summary', { chatId });
+      }
+      // ===============================================
 
       // Fetch messages with efficient query
       // Order by timestamp DESC, limit to specified count
@@ -81,6 +149,11 @@ export const summarizeThread = functions.https.onCall(
         userId: context.auth.uid,
       });
 
+      // Save newest message info BEFORE reversing (for cache tracking)
+      const newestMessage = messagesSnap.docs[0]; // DESC order, so first = newest
+      const newestMessageId = newestMessage.id;
+      const newestMessageTimestamp = newestMessage.data().timestamp;
+
       // Fetch sender names in parallel (batch read optimization)
       const senderIds = Array.from(
         new Set(messagesSnap.docs.map((doc) => doc.data().senderId))
@@ -100,7 +173,8 @@ export const summarizeThread = functions.https.onCall(
       // Build message array in chronological order
       // Filter out empty messages and format images properly
       const messages = messagesSnap.docs
-        .reverse() // Reverse to get chronological order
+        .slice() // Create copy to avoid mutating original array
+        .reverse() // Reverse copy to get chronological order
         .map((doc) => {
           const data = doc.data();
           // Proper logic: Check for image first, then content
@@ -170,32 +244,44 @@ export const summarizeThread = functions.https.onCall(
       // ===============================================
       const dateKey = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
       const now = Date.now();
-      
+
+      functions.logger.info('Preparing to save summary with timestamp', {
+        chatId,
+        lastMessageId: newestMessageId,
+        lastMessageTimestamp: newestMessageTimestamp,
+        timestampType: typeof newestMessageTimestamp,
+      });
+
       try {
         const summaryRef = firestore
           .collection('chats')
           .doc(chatId)
           .collection('summaries')
           .doc(dateKey);
-        
+
         const existingSummary = await summaryRef.get();
-        
-        await summaryRef.set({
+
+        const summaryData = {
           date: dateKey,
           summary,
           messageCount: messages.length,
           participants: participantNames,
           timeRange,
+          lastMessageId: newestMessageId,           // Track last message for cache validation
+          lastMessageTimestamp: newestMessageTimestamp,    // Track timestamp for efficient comparison
           createdAt: existingSummary.exists ? existingSummary.data()!.createdAt : now,
           updatedAt: now,
           generatedBy: 'manual',
           userId: context.auth.uid,
-        }, { merge: true });
-        
+        };
+
+        await summaryRef.set(summaryData, { merge: true });
+
         functions.logger.info('Summary saved to Firestore', {
           chatId,
           date: dateKey,
           isUpdate: existingSummary.exists,
+          savedTimestamp: newestMessageTimestamp,
         });
         
         // Embed for RAG (async, don't wait)

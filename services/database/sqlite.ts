@@ -55,7 +55,7 @@ class DatabaseService {
               createdAt INTEGER
             )
           `);
-          
+
           // Messages table
           tx.executeSql(`
             CREATE TABLE IF NOT EXISTS messages (
@@ -71,15 +71,77 @@ class DatabaseService {
               deliveryStatus TEXT DEFAULT 'sending',
               readBy TEXT,
               deliveredTo TEXT,
-              createdAt INTEGER DEFAULT (strftime('%s', 'now'))
+              createdAt INTEGER DEFAULT (strftime('%s', 'now')),
+              priority TEXT
             )
           `);
-          
+
+          // Attachments table for media, links, documents tracking
+          tx.executeSql(`
+            CREATE TABLE IF NOT EXISTS attachments (
+              id TEXT PRIMARY KEY,
+              messageId TEXT NOT NULL,
+              chatId TEXT NOT NULL,
+              type TEXT NOT NULL,
+              url TEXT,
+              metadata TEXT,
+              timestamp INTEGER NOT NULL,
+              FOREIGN KEY (messageId) REFERENCES messages(id) ON DELETE CASCADE
+            )
+          `);
+
+          // FTS5 virtual table for full-text search
+          // Note: FTS5 might not be available in all SQLite versions
+          // We'll try to create it and catch errors gracefully
+          tx.executeSql(`
+            CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+              content,
+              senderName,
+              chatName,
+              content='messages',
+              content_rowid='rowid'
+            )
+          `, [],
+          () => {
+            console.log('✅ FTS5 table created successfully');
+
+            // Create triggers to keep FTS5 in sync with messages table
+            // Trigger for INSERT
+            tx.executeSql(`
+              CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
+                INSERT INTO messages_fts(rowid, content, senderName, chatName)
+                VALUES (new.rowid, new.content, new.senderName, '');
+              END;
+            `);
+
+            // Trigger for UPDATE
+            tx.executeSql(`
+              CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
+                UPDATE messages_fts SET content = new.content, senderName = new.senderName
+                WHERE rowid = new.rowid;
+              END;
+            `);
+
+            // Trigger for DELETE
+            tx.executeSql(`
+              CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
+                DELETE FROM messages_fts WHERE rowid = old.rowid;
+              END;
+            `);
+          },
+          (_, error) => {
+            console.warn('⚠️  FTS5 not available, will use basic LIKE search', error);
+            return false; // Continue transaction even if FTS5 fails
+          });
+
           // Indexes for performance
           tx.executeSql('CREATE INDEX IF NOT EXISTS idx_messages_chatId ON messages(chatId)');
           tx.executeSql('CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)');
           tx.executeSql('CREATE INDEX IF NOT EXISTS idx_messages_syncStatus ON messages(syncStatus)');
           tx.executeSql('CREATE INDEX IF NOT EXISTS idx_chats_updatedAt ON chats(updatedAt)');
+          tx.executeSql('CREATE INDEX IF NOT EXISTS idx_attachments_messageId ON attachments(messageId)');
+          tx.executeSql('CREATE INDEX IF NOT EXISTS idx_attachments_chatId ON attachments(chatId)');
+          tx.executeSql('CREATE INDEX IF NOT EXISTS idx_attachments_type ON attachments(type)');
         },
         (error) => {
           console.error('SQL error:', error);
@@ -475,30 +537,153 @@ class DatabaseService {
   // === SEARCH OPERATIONS ===
   
   /**
-   * Search messages by content
+   * Search messages by content (BASIC - uses LIKE)
    */
   async searchMessages(searchQuery: string, limitCount: number = 20): Promise<Message[]> {
     if (!this.isAvailable()) return Promise.resolve([]);
-    
+
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
         tx.executeSql(
-          `SELECT * FROM messages 
-           WHERE content LIKE ? 
-           ORDER BY timestamp DESC 
+          `SELECT * FROM messages
+           WHERE content LIKE ?
+           ORDER BY timestamp DESC
            LIMIT ?`,
           [`%${searchQuery}%`, limitCount],
           (_, { rows }) => {
             const messages = rows._array.map((row: any) => ({
               ...row,
               readBy: JSON.parse(row.readBy || '[]'),
-              deliveredTo: JSON.parse(row.deliveredTo || '[]')
+              deliveredTo: JSON.parse(row.deliveredTo || '[]'),
+              priority: row.priority ? JSON.parse(row.priority) : undefined
             }));
             resolve(messages as Message[]);
           },
           (_, error) => {
             reject(error);
             return false;
+          }
+        );
+      });
+    });
+  }
+
+  /**
+   * Search messages with FTS5 (ADVANCED - faster and supports fuzzy matching)
+   */
+  async searchMessagesFTS(searchQuery: string, limitCount: number = 50): Promise<Message[]> {
+    if (!this.isAvailable()) return Promise.resolve([]);
+
+    return new Promise((resolve, reject) => {
+      this.db!.transaction((tx) => {
+        // Try FTS5 search first
+        tx.executeSql(
+          `SELECT m.*, bm25(messages_fts) as rank
+           FROM messages m
+           JOIN messages_fts ON m.rowid = messages_fts.rowid
+           WHERE messages_fts MATCH ?
+           ORDER BY rank, m.timestamp DESC
+           LIMIT ?`,
+          [searchQuery, limitCount],
+          (_, { rows }) => {
+            const messages = rows._array.map((row: any) => ({
+              ...row,
+              readBy: JSON.parse(row.readBy || '[]'),
+              deliveredTo: JSON.parse(row.deliveredTo || '[]'),
+              priority: row.priority ? JSON.parse(row.priority) : undefined,
+              relevanceScore: Math.abs(row.rank) // BM25 score (negative, so we abs it)
+            }));
+            resolve(messages as Message[]);
+          },
+          (_, error) => {
+            // Fallback to basic LIKE search if FTS5 fails
+            console.warn('FTS5 search failed, falling back to LIKE search', error);
+            this.searchMessages(searchQuery, limitCount).then(resolve).catch(reject);
+            return false;
+          }
+        );
+      });
+    });
+  }
+
+  /**
+   * Search messages with smart ranking (recency + exact match + frequency)
+   */
+  async searchMessagesWithRanking(
+    searchQuery: string,
+    currentUserId: string,
+    limitCount: number = 50
+  ): Promise<(Message & { relevanceScore: number })[]> {
+    if (!this.isAvailable()) return Promise.resolve([]);
+
+    const query = searchQuery.toLowerCase().trim();
+
+    return new Promise((resolve, reject) => {
+      this.db!.transaction((tx) => {
+        // Get frequent contacts (top 10 by message count)
+        tx.executeSql(
+          `SELECT senderId, COUNT(*) as count
+           FROM messages
+           WHERE senderId != ?
+           GROUP BY senderId
+           ORDER BY count DESC
+           LIMIT 10`,
+          [currentUserId],
+          (_, { rows }) => {
+            const frequentContacts = new Set(rows._array.map(r => r.senderId));
+
+            // Try FTS5 search with ranking
+            tx.executeSql(
+              `SELECT m.*,
+                      bm25(messages_fts) as fts_rank,
+                      (CASE
+                        WHEN m.timestamp > ? THEN 0.3
+                        ELSE 0
+                      END) as recency_score,
+                      (CASE
+                        WHEN LOWER(m.content) = ? THEN 0.5
+                        WHEN LOWER(m.content) LIKE ? THEN 0.3
+                        ELSE 0
+                      END) as exact_match_score
+               FROM messages m
+               JOIN messages_fts ON m.rowid = messages_fts.rowid
+               WHERE messages_fts MATCH ?
+               ORDER BY (ABS(bm25(messages_fts)) + recency_score + exact_match_score) DESC, m.timestamp DESC
+               LIMIT ?`,
+              [
+                Date.now() - (7 * 24 * 60 * 60 * 1000), // 7 days ago
+                query,
+                `%${query}%`,
+                searchQuery,
+                limitCount
+              ],
+              (_, { rows }) => {
+                const messages = rows._array.map((row: any) => {
+                  const frequencyScore = frequentContacts.has(row.senderId) ? 0.2 : 0;
+                  const totalScore = Math.abs(row.fts_rank || 0) +
+                                   (row.recency_score || 0) +
+                                   (row.exact_match_score || 0) +
+                                   frequencyScore;
+
+                  return {
+                    ...row,
+                    readBy: JSON.parse(row.readBy || '[]'),
+                    deliveredTo: JSON.parse(row.deliveredTo || '[]'),
+                    priority: row.priority ? JSON.parse(row.priority) : undefined,
+                    relevanceScore: totalScore
+                  };
+                });
+                resolve(messages as (Message & { relevanceScore: number })[]);
+              },
+              (_, error) => {
+                // Fallback to basic search
+                console.warn('FTS5 ranked search failed, falling back', error);
+                this.searchMessages(searchQuery, limitCount)
+                  .then((msgs) => resolve(msgs.map(m => ({ ...m, relevanceScore: 0.5 }))))
+                  .catch(reject);
+                return false;
+              }
+            );
           }
         );
       });
@@ -682,16 +867,181 @@ class DatabaseService {
   
   async deleteChat(chatId: string): Promise<void> {
     if (!this.isAvailable()) return Promise.resolve();
-    
+
     return new Promise((resolve, reject) => {
       this.db!.transaction((tx) => {
-        // Delete messages first
+        // Delete attachments first
+        tx.executeSql('DELETE FROM attachments WHERE chatId = ?', [chatId]);
+
+        // Delete messages
         tx.executeSql('DELETE FROM messages WHERE chatId = ?', [chatId]);
-        
+
         // Delete chat
         tx.executeSql(
           'DELETE FROM chats WHERE id = ?',
           [chatId],
+          () => resolve(),
+          (_, error) => {
+            reject(error);
+            return false;
+          }
+        );
+      });
+    });
+  }
+
+  // === ATTACHMENT OPERATIONS ===
+
+  /**
+   * Insert an attachment
+   */
+  async insertAttachment(attachment: {
+    id: string;
+    messageId: string;
+    chatId: string;
+    type: 'photo' | 'link' | 'document' | 'location';
+    url?: string;
+    metadata?: any;
+    timestamp: number;
+  }): Promise<void> {
+    if (!this.isAvailable()) return Promise.resolve();
+
+    return new Promise((resolve, reject) => {
+      this.db!.transaction((tx) => {
+        tx.executeSql(
+          `INSERT OR REPLACE INTO attachments (id, messageId, chatId, type, url, metadata, timestamp)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            attachment.id,
+            attachment.messageId,
+            attachment.chatId,
+            attachment.type,
+            attachment.url || '',
+            JSON.stringify(attachment.metadata || {}),
+            attachment.timestamp
+          ],
+          () => resolve(),
+          (_, error) => {
+            reject(error);
+            return false;
+          }
+        );
+      });
+    });
+  }
+
+  /**
+   * Get attachments for a message
+   */
+  async getAttachmentsByMessage(messageId: string): Promise<any[]> {
+    if (!this.isAvailable()) return Promise.resolve([]);
+
+    return new Promise((resolve, reject) => {
+      this.db!.transaction((tx) => {
+        tx.executeSql(
+          'SELECT * FROM attachments WHERE messageId = ?',
+          [messageId],
+          (_, { rows }) => {
+            const attachments = rows._array.map((row: any) => ({
+              ...row,
+              metadata: JSON.parse(row.metadata || '{}')
+            }));
+            resolve(attachments);
+          },
+          (_, error) => {
+            reject(error);
+            return false;
+          }
+        );
+      });
+    });
+  }
+
+  /**
+   * Get attachments by type (photos, links, documents)
+   */
+  async getAttachmentsByType(
+    type: 'photo' | 'link' | 'document' | 'location',
+    chatId?: string,
+    limitCount: number = 50
+  ): Promise<any[]> {
+    if (!this.isAvailable()) return Promise.resolve([]);
+
+    return new Promise((resolve, reject) => {
+      this.db!.transaction((tx) => {
+        const query = chatId
+          ? 'SELECT * FROM attachments WHERE type = ? AND chatId = ? ORDER BY timestamp DESC LIMIT ?'
+          : 'SELECT * FROM attachments WHERE type = ? ORDER BY timestamp DESC LIMIT ?';
+        const params = chatId ? [type, chatId, limitCount] : [type, limitCount];
+
+        tx.executeSql(
+          query,
+          params,
+          (_, { rows }) => {
+            const attachments = rows._array.map((row: any) => ({
+              ...row,
+              metadata: JSON.parse(row.metadata || '{}')
+            }));
+            resolve(attachments);
+          },
+          (_, error) => {
+            reject(error);
+            return false;
+          }
+        );
+      });
+    });
+  }
+
+  /**
+   * Search attachments
+   */
+  async searchAttachments(
+    searchQuery: string,
+    type?: 'photo' | 'link' | 'document' | 'location',
+    limitCount: number = 50
+  ): Promise<any[]> {
+    if (!this.isAvailable()) return Promise.resolve([]);
+
+    return new Promise((resolve, reject) => {
+      this.db!.transaction((tx) => {
+        const query = type
+          ? `SELECT * FROM attachments WHERE type = ? AND (url LIKE ? OR metadata LIKE ?) ORDER BY timestamp DESC LIMIT ?`
+          : `SELECT * FROM attachments WHERE (url LIKE ? OR metadata LIKE ?) ORDER BY timestamp DESC LIMIT ?`;
+        const params = type
+          ? [type, `%${searchQuery}%`, `%${searchQuery}%`, limitCount]
+          : [`%${searchQuery}%`, `%${searchQuery}%`, limitCount];
+
+        tx.executeSql(
+          query,
+          params,
+          (_, { rows }) => {
+            const attachments = rows._array.map((row: any) => ({
+              ...row,
+              metadata: JSON.parse(row.metadata || '{}')
+            }));
+            resolve(attachments);
+          },
+          (_, error) => {
+            reject(error);
+            return false;
+          }
+        );
+      });
+    });
+  }
+
+  /**
+   * Delete attachments for a message
+   */
+  async deleteAttachmentsByMessage(messageId: string): Promise<void> {
+    if (!this.isAvailable()) return Promise.resolve();
+
+    return new Promise((resolve, reject) => {
+      this.db!.transaction((tx) => {
+        tx.executeSql(
+          'DELETE FROM attachments WHERE messageId = ?',
+          [messageId],
           () => resolve(),
           (_, error) => {
             reject(error);

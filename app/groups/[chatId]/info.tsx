@@ -29,7 +29,7 @@ import { Chat } from '@/types/chat';
 import { getInitials } from '@/utils/formatters';
 import { getFirebaseFirestore } from '@/services/firebase/config';
 import { doc, updateDoc } from 'firebase/firestore';
-import { ProjectOverviewModal } from '@/components/ai/ProjectOverviewModal';
+import { ProjectDescriptionModal } from '@/components/groups/ProjectDescriptionModal';
 
 interface Participant {
   uid: string;
@@ -48,7 +48,7 @@ export default function GroupInfoScreen() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCurrentUserAdmin, setIsCurrentUserAdmin] = useState(false);
-  const [showProjectOverview, setShowProjectOverview] = useState(false);
+  const [showDescriptionModal, setShowDescriptionModal] = useState(false);
   const isProject = chat?.projectType === 'project';
   
   // Load group info
@@ -187,27 +187,22 @@ export default function GroupInfoScreen() {
   };
   
   const handleEditProjectDescription = () => {
-    Alert.prompt(
-      'Edit Project Description',
-      'Update the AI context for better tracking',
-      async (text) => {
-        if (text !== null) {
-          try {
-            const firestore = await getFirebaseFirestore();
-            await updateDoc(doc(firestore, 'chats', chatId), {
-              projectDescription: text,
-            });
-            Alert.alert('Success', 'Project description updated');
-            await loadGroupInfo(); // Refresh
-          } catch (error) {
-            console.error('Error updating description:', error);
-            Alert.alert('Error', 'Failed to update project description');
-          }
-        }
-      },
-      'plain-text',
-      chat?.projectDescription || ''
-    );
+    setShowDescriptionModal(true);
+  };
+
+  const handleSaveDescription = async (description: string) => {
+    try {
+      const firestore = await getFirebaseFirestore();
+      await updateDoc(doc(firestore, 'chats', chatId), {
+        projectDescription: description,
+      });
+      setShowDescriptionModal(false);
+      Alert.alert('Success', 'Project description updated');
+      await loadGroupInfo(); // Refresh
+    } catch (error) {
+      console.error('Error updating description:', error);
+      Alert.alert('Error', 'Failed to update project description');
+    }
   };
 
   const showParticipantOptions = (participant: Participant) => {
@@ -332,22 +327,30 @@ export default function GroupInfoScreen() {
           {isProject && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Project Tools</Text>
-              
+
               <TouchableOpacity
                 style={styles.actionItem}
-                onPress={() => setShowProjectOverview(true)}
+                onPress={() => router.push(`/groups/${chatId}/progress`)}
               >
                 <Ionicons name="analytics-outline" size={24} color="#007AFF" />
-                <Text style={styles.actionItemText}>View Project Overview</Text>
+                <Text style={styles.actionItemText}>Progress</Text>
               </TouchableOpacity>
-              
+
+              <TouchableOpacity
+                style={styles.actionItem}
+                onPress={() => router.push(`/groups/${chatId}/decisions`)}
+              >
+                <Ionicons name="git-branch-outline" size={24} color="#007AFF" />
+                <Text style={styles.actionItemText}>Decisions</Text>
+              </TouchableOpacity>
+
               {isCurrentUserAdmin && (
                 <TouchableOpacity
                   style={styles.actionItem}
                   onPress={handleEditProjectDescription}
                 >
                   <Ionicons name="create-outline" size={24} color="#007AFF" />
-                  <Text style={styles.actionItemText}>Edit Project Description</Text>
+                  <Text style={styles.actionItemText}>Edit Description</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -376,16 +379,15 @@ export default function GroupInfoScreen() {
             </TouchableOpacity>
           </View>
         </ScrollView>
-        
-        {/* Project Overview Modal */}
-        {showProjectOverview && (
-          <ProjectOverviewModal
-            chatId={chatId}
-            visible={showProjectOverview}
-            onClose={() => setShowProjectOverview(false)}
-          />
-        )}
       </View>
+
+      {/* Project Description Modal */}
+      <ProjectDescriptionModal
+        visible={showDescriptionModal}
+        initialDescription={chat?.projectDescription || ''}
+        onSave={handleSaveDescription}
+        onCancel={() => setShowDescriptionModal(false)}
+      />
     </SafeAreaView>
   );
 }

@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform } from 'react-native';
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 
 export default function TabsLayout() {
   return (
@@ -22,12 +23,31 @@ export default function TabsLayout() {
     >
       <Tabs.Screen
         name="chats"
-        options={{
-          title: 'Chats',
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="chatbubbles" size={28} color={color} />
-          ),
-          href: '/chats',
+        options={({ route }) => {
+          const routeName = getFocusedRouteNameFromRoute(route);
+          // Hide tab bar when on individual chat screen
+          return {
+            title: 'Chats',
+            tabBarIcon: ({ color }) => (
+              <Ionicons name="chatbubbles" size={28} color={color} />
+            ),
+            href: '/chats',
+            tabBarStyle: routeName === '[chatId]'
+              ? {
+                  position: 'absolute',
+                  bottom: -100, // Move offscreen instead of display:none
+                  height: 0,
+                  overflow: 'hidden',
+                }
+              : {
+                  backgroundColor: '#FFFFFF',
+                  borderTopWidth: 0.5,
+                  borderTopColor: '#C6C6C8',
+                  paddingTop: 12,
+                  paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+                  height: Platform.OS === 'ios' ? 88 : 64,
+                },
+          };
         }}
       />
       <Tabs.Screen
@@ -44,10 +64,7 @@ export default function TabsLayout() {
         name="decisions"
         options={{
           title: 'Decisions',
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="git-branch-outline" size={28} color={color} />
-          ),
-          href: '/decisions',
+          href: null, // Hidden - decisions are now project-specific
         }}
       />
       <Tabs.Screen

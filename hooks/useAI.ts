@@ -23,12 +23,13 @@ export function useAI() {
    */
   const summarizeThread = async (
     chatId: string,
-    messageLimit?: number
+    messageLimit?: number,
+    forceRefresh?: boolean
   ): Promise<SummaryResult | null> => {
     setLoading(true);
     setError(null);
     try {
-      const result = await aiService.summarizeThread(chatId, messageLimit);
+      const result = await aiService.summarizeThread(chatId, messageLimit, forceRefresh);
       return result;
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to summarize thread';

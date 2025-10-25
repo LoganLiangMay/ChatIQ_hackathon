@@ -419,8 +419,24 @@ export {
  * LangChain + LangSmith for complex RAG queries
  * Auto-traces to LangSmith for observability
  */
-export { 
+export {
   knowledgeAgent,        // Complex queries with RAG
   embedContent,          // Embed messages/summaries
   searchVectorStore      // Semantic search via Pinecone
 } from './ai/knowledgeAgent';
+
+/**
+ * IQT Mode (Impersonation Query Thread)
+ * AI persona that auto-responds based on user's knowledge base
+ */
+export {
+  personaAgent          // Generate responses mimicking user's style
+} from './ai/personaAgent';
+
+/**
+ * IQT Mode - Document Embedding
+ * Upload and embed documents into user's knowledge base
+ */
+export {
+  embedDoc              // Embed PDFs and text files
+} from './ai/embedDoc';

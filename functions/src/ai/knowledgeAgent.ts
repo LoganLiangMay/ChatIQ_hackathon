@@ -118,25 +118,48 @@ export const knowledgeAgent = functions.https.onCall(async (data, context) => {
           ).join('\n')
         : '';
 
-      // Generate response with context
-      const prompt = `You are an AI assistant for ChatIQ, helping users find information from their conversations.
+      // Generate response with context - prioritize conversation history for reference resolution
+      const hasRAGResults = results && results.length > 0;
+      const hasConversationContext = conversationContext.length > 0;
 
-${conversationContext ? `Recent conversation:\n${conversationContext}\n\n` : ''}First, check if the following context from the user's messages can answer the question.
+      let prompt: string;
 
-If the context DOES contain relevant information:
-- Answer based on the context, citing specific messages or summaries
-- Use the conversation history above to understand what the user is referring to (e.g., "it", "that", "this")
+      if (hasConversationContext) {
+        // Use conversation history to resolve pronouns and references FIRST
+        prompt = `You are an AI assistant for ChatIQ, helping users find information from their conversations.
 
-If the context does NOT contain relevant information:
-- Start by saying: "I couldn't find any discussions about [topic] in your chats."
-- Then provide a helpful general knowledge answer to the question
+CONVERSATION HISTORY (use this to understand pronouns like "this", "that", "it"):
+${conversationContext}
 
-Context from your chats:
+${hasRAGResults ? `RELEVANT MESSAGES FROM YOUR CHATS:
 ${context}
+
+Instructions:
+1. First, look at the CONVERSATION HISTORY to understand what the user is referring to with pronouns or vague references
+2. Then use the RELEVANT MESSAGES to provide specific information
+3. Answer the question by combining both sources` : `I searched your message history but didn't find specific past discussions about this topic.
+
+Instructions:
+1. Use the CONVERSATION HISTORY above to understand what the user is asking about
+2. If the conversation history provides enough context to answer, use it
+3. If needed, provide helpful general information based on the topic from the conversation`}
 
 Question: ${question}
 
 Answer:`;
+      } else {
+        // No conversation history - fall back to original logic
+        prompt = `You are an AI assistant for ChatIQ, helping users find information from their conversations.
+
+${hasRAGResults ? `Here are relevant messages from your chats:
+${context}
+
+Answer the question based on this context.` : `I couldn't find any relevant discussions in your chats. Let me provide a helpful general answer.`}
+
+Question: ${question}
+
+Answer:`;
+      }
 
       const response = await model.invoke(prompt);
 

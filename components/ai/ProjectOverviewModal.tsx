@@ -27,10 +27,11 @@ interface Props {
 }
 
 export function ProjectOverviewModal({ chatId, visible, onClose }: Props) {
-  const [activeTab, setActiveTab] = useState<'progress' | 'tree'>('progress');
+  const [activeTab, setActiveTab] = useState<'progress' | 'decisions' | 'tree'>('progress');
   const [loading, setLoading] = useState(false);
   const [treeData, setTreeData] = useState<TreeDiagramData | null>(null);
   const [progressData, setProgressData] = useState<ProgressData | null>(null);
+  const [decisions, setDecisions] = useState<any[]>([]);
   
   useEffect(() => {
     if (visible) {
@@ -43,57 +44,63 @@ export function ProjectOverviewModal({ chatId, visible, onClose }: Props) {
     try {
       if (activeTab === 'progress' && !progressData) {
         // Call extractDecisions and detectBlockers to calculate progress
-        const [decisions, blockers] = await Promise.all([
+        const [decisionsData, blockers] = await Promise.all([
           aiService.trackDecisions(chatId, 30),
           aiService.detectBlockers(chatId, 30),
         ]);
-        
+
         // Calculate progress
-        const totalActions = decisions.length + blockers.length;
-        const progress = totalActions > 0 
-          ? Math.round((decisions.length / totalActions) * 100)
+        const totalActions = decisionsData.length + blockers.length;
+        const progress = totalActions > 0
+          ? Math.round((decisionsData.length / totalActions) * 100)
           : 0;
-        
-        const status = blockers.length > 2 ? 'blocked' 
-          : decisions.length > 5 ? 'in-progress'
+
+        const status = blockers.length > 2 ? 'blocked'
+          : decisionsData.length > 5 ? 'in-progress'
           : 'planning';
-        
+
         setProgressData({
           progress,
-          decisionsCount: decisions.length,
+          decisionsCount: decisionsData.length,
           blockersCount: blockers.length,
           status,
         });
       }
-      
+
+      if (activeTab === 'decisions' && decisions.length === 0) {
+        // Load decisions for the decisions tab
+        const decisionsData = await aiService.trackDecisions(chatId, 50);
+        setDecisions(decisionsData || []);
+      }
+
       if (activeTab === 'tree' && !treeData) {
         // Call extractDecisions and detectBlockers to generate tree
-        const [decisions, blockers] = await Promise.all([
+        const [decisionsData, blockers] = await Promise.all([
           aiService.trackDecisions(chatId, 30),
           aiService.detectBlockers(chatId, 30),
         ]);
-        
+
         // Generate Mermaid code
         let mermaidCode = 'graph TD\n';
         mermaidCode += 'A[Project Start] --> B[Discussions]\n';
-        
+
         // Add decisions
-        decisions.slice(0, 5).forEach((d: any, i: number) => {
+        decisionsData.slice(0, 5).forEach((d: any, i: number) => {
           const nodeId = `D${i}`;
           const text = d.decision.substring(0, 40).replace(/"/g, "'");
           mermaidCode += `B --> ${nodeId}["✓ ${text}..."]\n`;
         });
-        
+
         // Add blockers
         blockers.slice(0, 3).forEach((b: any, i: number) => {
           const nodeId = `B${i}`;
           const text = b.blocker.substring(0, 30).replace(/"/g, "'");
           mermaidCode += `D0 --> ${nodeId}["🚫 ${text}..."]\n`;
         });
-        
+
         setTreeData({
           mermaidCode,
-          nodeCount: Math.min(decisions.length, 5) + Math.min(blockers.length, 3),
+          nodeCount: Math.min(decisionsData.length, 5) + Math.min(blockers.length, 3),
         });
       }
     } catch (error: any) {
@@ -154,6 +161,54 @@ export function ProjectOverviewModal({ chatId, visible, onClose }: Props) {
     );
   };
   
+  const renderDecisionsTab = () => {
+    if (decisions.length === 0) {
+      return (
+        <View style={styles.tabContent}>
+          <View style={styles.emptyState}>
+            <Ionicons name="git-branch-outline" size={64} color="#CCC" />
+            <Text style={styles.emptyText}>No Decisions Found</Text>
+            <Text style={styles.emptySubtext}>
+              No decisions have been tracked in this project yet
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.tabContent}>
+        {decisions.map((decision: any, index: number) => (
+          <View key={index} style={styles.decisionItem}>
+            <View style={styles.decisionHeader}>
+              <Ionicons name="git-branch" size={20} color="#007AFF" />
+              <Text style={styles.decisionDate}>
+                {new Date(decision.timestamp).toLocaleDateString()}
+              </Text>
+            </View>
+
+            <Text style={styles.decisionTitle}>{decision.decision}</Text>
+
+            {decision.context && (
+              <Text style={styles.decisionContext} numberOfLines={2}>
+                {decision.context}
+              </Text>
+            )}
+
+            {decision.participants && decision.participants.length > 0 && (
+              <View style={styles.participants}>
+                <Ionicons name="people-outline" size={14} color="#666" />
+                <Text style={styles.participantsText}>
+                  {decision.participants.join(', ')}
+                </Text>
+              </View>
+            )}
+          </View>
+        ))}
+      </View>
+    );
+  };
+
   const renderTreeTab = () => {
     if (!treeData) return null;
     
@@ -232,27 +287,41 @@ export function ProjectOverviewModal({ chatId, visible, onClose }: Props) {
             style={[styles.tab, activeTab === 'progress' && styles.tabActive]}
             onPress={() => setActiveTab('progress')}
           >
-            <Ionicons 
-              name="analytics" 
-              size={20} 
-              color={activeTab === 'progress' ? '#007AFF' : '#8E8E93'} 
+            <Ionicons
+              name="analytics"
+              size={18}
+              color={activeTab === 'progress' ? '#007AFF' : '#8E8E93'}
             />
             <Text style={[styles.tabText, activeTab === 'progress' && styles.tabTextActive]}>
               Progress
             </Text>
           </TouchableOpacity>
-          
+
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'decisions' && styles.tabActive]}
+            onPress={() => setActiveTab('decisions')}
+          >
+            <Ionicons
+              name="git-branch"
+              size={18}
+              color={activeTab === 'decisions' ? '#007AFF' : '#8E8E93'}
+            />
+            <Text style={[styles.tabText, activeTab === 'decisions' && styles.tabTextActive]}>
+              Decisions
+            </Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.tab, activeTab === 'tree' && styles.tabActive]}
             onPress={() => setActiveTab('tree')}
           >
-            <Ionicons 
-              name="git-network" 
-              size={20} 
-              color={activeTab === 'tree' ? '#007AFF' : '#8E8E93'} 
+            <Ionicons
+              name="git-network"
+              size={18}
+              color={activeTab === 'tree' ? '#007AFF' : '#8E8E93'}
             />
             <Text style={[styles.tabText, activeTab === 'tree' && styles.tabTextActive]}>
-              Decision Flow
+              Flow
             </Text>
           </TouchableOpacity>
         </View>
@@ -265,7 +334,9 @@ export function ProjectOverviewModal({ chatId, visible, onClose }: Props) {
           </View>
         ) : (
           <ScrollView style={styles.content}>
-            {activeTab === 'progress' ? renderProgressTab() : renderTreeTab()}
+            {activeTab === 'progress' && renderProgressTab()}
+            {activeTab === 'decisions' && renderDecisionsTab()}
+            {activeTab === 'tree' && renderTreeTab()}
           </ScrollView>
         )}
       </View>
@@ -361,6 +432,66 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: Dimensions.get('window').height - 250,
     marginTop: 20,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#666',
+    marginTop: 16,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 8,
+    textAlign: 'center',
+    paddingHorizontal: 40,
+  },
+  decisionItem: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 10,
+    padding: 16,
+    marginBottom: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#007AFF',
+  },
+  decisionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  decisionDate: {
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '500',
+  },
+  decisionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 6,
+    lineHeight: 22,
+  },
+  decisionContext: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  participants: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  participantsText: {
+    fontSize: 13,
+    color: '#666',
   },
 });
 
