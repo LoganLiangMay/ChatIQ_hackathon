@@ -175,12 +175,17 @@ export const detectBlockers = functions
         return { blockers: [] };
       }
 
+      // Get project description for context (if available)
+      const projectDescription = chatData.projectDescription || '';
+
       // AI prompt for blocker detection
       const prompt = [
         {
           role: 'system',
           content: `You are an AI that detects project blockers in team conversations.
-        
+
+${projectDescription ? `Project Context: ${projectDescription}\n\nUse this context to better understand blockers and their impact on the project.\n` : ''}
+
 Blockers are obstacles preventing progress:
 - "waiting on X", "blocked by Y", "can't proceed until Z"
 - "stuck on", "need approval from", "dependencies not ready"
@@ -211,7 +216,7 @@ Return JSON array (empty array if no blockers found):
       ];
 
       const response = await callChatCompletion(prompt, {
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         temperature: 0.3,
         maxTokens: 800,
       });
@@ -223,10 +228,16 @@ Return JSON array (empty array if no blockers found):
         return { blockers: [] };
       }
 
-      // Parse AI response
+      // Parse AI response (handle markdown code blocks)
       let blockers;
       try {
-        blockers = JSON.parse(aiResult);
+        // Strip markdown code blocks if present (```json ... ```)
+        let cleanedResult = aiResult.trim();
+        if (cleanedResult.startsWith('```')) {
+          cleanedResult = cleanedResult.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+        }
+
+        blockers = JSON.parse(cleanedResult);
         console.log(`✅ AI parsed successfully, found ${blockers.length} blockers`);
       } catch (parseError) {
         console.error('Error parsing AI response:', parseError);
@@ -251,9 +262,11 @@ Return JSON array (empty array if no blockers found):
       }));
 
       // ===============================================
-      // 💾 Auto-save to Firestore cache
+      // 💾 Auto-save to Firestore (cache + permanent storage)
       // ===============================================
       const extractedAt = Date.now();
+
+      // 1. Save to cache for fast retrieval
       try {
         const dateKey = new Date().toISOString().split('T')[0];
         const cacheRef = firestore
@@ -284,6 +297,33 @@ Return JSON array (empty array if no blockers found):
         console.warn('⚠️ Failed to cache blockers (non-critical)', {
           chatId,
           error: cacheError.message,
+        });
+      }
+
+      // 2. Save to permanent collection (like action items)
+      try {
+        const batch = firestore.batch();
+
+        for (const blocker of enrichedBlockers) {
+          const blockerRef = firestore.collection('blockers').doc(blocker.id);
+          batch.set(blockerRef, {
+            ...blocker,
+            chatId,
+            userId,
+            createdAt: extractedAt,
+          });
+        }
+
+        await batch.commit();
+
+        console.log('✅ Blockers saved permanently to Firestore', {
+          chatId,
+          blockersCount: enrichedBlockers.length,
+        });
+      } catch (saveError: any) {
+        console.warn('⚠️ Failed to save blockers permanently', {
+          chatId,
+          error: saveError.message,
         });
       }
       // ===============================================

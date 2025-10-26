@@ -217,7 +217,7 @@ export const extractDecisions = functions
     // Call OpenAI to extract decisions with project context
     const prompt = PROMPTS.trackDecisions(messages, projectDescription);
     const aiResponse = await callChatCompletion(prompt, {
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o',
       temperature: 0.3,
       maxTokens: 1000,
     });
@@ -229,10 +229,16 @@ export const extractDecisions = functions
       return { decisions: [], projects: [] };
     }
 
-    // Parse AI response
+    // Parse AI response (handle markdown code blocks)
     let parsed;
     try {
-      parsed = JSON.parse(aiResult);
+      // Strip markdown code blocks if present (```json ... ```)
+      let cleanedResult = aiResult.trim();
+      if (cleanedResult.startsWith('```')) {
+        cleanedResult = cleanedResult.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+      }
+
+      parsed = JSON.parse(cleanedResult);
       console.log(`✅ AI parsed successfully, found ${Array.isArray(parsed) ? parsed.length : (parsed.decisions?.length || 0)} decisions`);
     } catch (parseError) {
       console.error('Error parsing AI response:', parseError);
@@ -306,9 +312,11 @@ export const extractDecisions = functions
     }));
 
     // ===============================================
-    // 💾 Auto-save to Firestore cache
+    // 💾 Auto-save to Firestore (cache + permanent storage)
     // ===============================================
     const extractedAt = Date.now();
+
+    // 1. Save to cache for fast retrieval
     try {
       const dateKey = new Date().toISOString().split('T')[0];
       const cacheRef = firestore
@@ -341,6 +349,45 @@ export const extractDecisions = functions
       console.warn('⚠️ Failed to cache decisions (non-critical)', {
         chatId,
         error: cacheError.message,
+      });
+    }
+
+    // 2. Save to permanent collections (like action items)
+    try {
+      const batch = firestore.batch();
+
+      // Save decisions
+      for (const decision of enrichedDecisions) {
+        const decisionRef = firestore.collection('decisions').doc(decision.id);
+        batch.set(decisionRef, {
+          ...decision,
+          chatId,
+          userId,
+          createdAt: extractedAt,
+        });
+      }
+
+      // Save projects
+      for (const project of enrichedProjects) {
+        const projectRef = firestore.collection('projects').doc(project.id);
+        batch.set(projectRef, {
+          ...project,
+          createdAt: extractedAt,
+          updatedAt: extractedAt,
+        }, { merge: true });
+      }
+
+      await batch.commit();
+
+      console.log('✅ Decisions and projects saved permanently to Firestore', {
+        chatId,
+        decisionsCount: enrichedDecisions.length,
+        projectsCount: enrichedProjects.length,
+      });
+    } catch (saveError: any) {
+      console.warn('⚠️ Failed to save decisions permanently', {
+        chatId,
+        error: saveError.message,
       });
     }
     // ===============================================
